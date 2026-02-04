@@ -1,0 +1,12 @@
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\bin\Debug\net9.0\AzotBase.deps.json
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\bin\Debug\net9.0\AzotBase.dll
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\bin\Debug\net9.0\AzotBase.pdb
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.csproj.AssemblyReference.cache
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.GeneratedMSBuildEditorConfig.editorconfig
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.AssemblyInfoInputs.cache
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.AssemblyInfo.cs
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.csproj.CoreCompileInputs.cache
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.dll
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\refint\AzotBase.dll
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.pdb
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\ref\AzotBase.dll

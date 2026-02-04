@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzotBase", "AzotBase\AzotBase.csproj", "{6482D680-AFC6-4D86-B94A-D644F1EDDE33}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{6482D680-AFC6-4D86-B94A-D644F1EDDE33}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6482D680-AFC6-4D86-B94A-D644F1EDDE33}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6482D680-AFC6-4D86-B94A-D644F1EDDE33}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6482D680-AFC6-4D86-B94A-D644F1EDDE33}.Release|Any CPU.Build.0 = Release|Any CPU
+		{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
