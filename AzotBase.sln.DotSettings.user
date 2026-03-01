@@ -7,6 +7,7 @@
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AIndex_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E1_003Fresharper_002Dhost_003FSourcesCache_003F2a1a813823579c69832f1304f97761e7be433bd6aa928f351d138050b56a38_003FIndex_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AITestOutputHelper_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E1_003Fresharper_002Dhost_003FDecompilerCache_003Fdecompiler_003Fb8b10b8247cb413eab5175c26a5956a755a8_003F31_003Ff58328ac_003FITestOutputHelper_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AMemoryStream_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E1_003Fresharper_002Dhost_003FSourcesCache_003F8a06b314b31fa2ec54ffc18e9d057e91891cf72182dd6ce1985a0a43c_003FMemoryStream_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
+	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AReaderWriterLockSlim_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E1_003Fresharper_002Dhost_003FSourcesCache_003Fc873ca41eba423c5f6a0acbce94a29238063d5b128eb5dc060b934c369e451_003FReaderWriterLockSlim_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003ATypeUtils_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E1_003Fresharper_002Dhost_003FSourcesCache_003Faabe69a31dba461aa129ca92d5a050f39534f87ac62f598154fecc1694ab32_003FTypeUtils_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/CodeInspection/ExcludedFiles/FilesAndFoldersToSkip2/=7020124F_002D9FFC_002D4AC3_002D8F3D_002DAAB8E0240759_002Ff_003AUnaryExpression_002Ecs_002Fl_003A_002E_002E_003F_002E_002E_003F_002E_002E_003FAppData_003FRoaming_003FJetBrains_003FRider2025_002E1_003Fresharper_002Dhost_003FSourcesCache_003F923e881d2face21dfd1b93d7f8eed86b92b7e52ae1ad92bf6372ad712a846_003FUnaryExpression_002Ecs/@EntryIndexedValue">ForceIncluded</s:String>
 	<s:String x:Key="/Default/Environment/UnitTesting/UnitTestSessionStore/Sessions/=49b74183_002D5735_002D4bf2_002D8c8d_002D592fd609f2e7/@EntryIndexedValue">&lt;SessionState ContinuousTestingMode="0" IsActive="True" Name="SerializeClass" xmlns="urn:schemas-jetbrains-com:jetbrains-ut-session"&gt;&#xD;
@@ -27,8 +28,27 @@
       &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.IndexNodeTest.Insert_WhenKeyAtStart&lt;/TestId&gt;&#xD;
       &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.IndexNodeTest.InsertKey_WhenKeyAtStart_ShouldUpdateKeysAndChildrenCorrectly&lt;/TestId&gt;&#xD;
       &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.DeleteKeys&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Insert_SingleKey_ShouldBeStoredInRootLeaf&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.PageTest.PageManagerTest.AllocatePage_ShouldCreateAndPersistPage&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.PageTest.PageManagerTest.WritePage_ShouldPersistChanges&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.PageTest.PageManagerTest.ReadPageType_ShouldReturnCorrectType&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.PageTest.PageManagerTest.AllocateMultiplePages_ShouldIncreasePageId&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Insert_SingleKey_ShouldAppearInLeaf&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Insert_MultipleKeys_ShouldBeSorted&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Insert_ShouldSplitLeaf_WhenOverflow&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Insert_ManyKeys_ShouldPreserveAllValues&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Delete_SingleKey_ShouldRemoveIt&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Delete_ManyKeys_ShouldRemainConsistent&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Delete_AllKeys_ShouldResultInEmptyTree&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Insert_Delete_Insert_ShouldRemainCorrect&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest.Concurrent_Insert_ShouldNotCorruptTree&lt;/TestId&gt;&#xD;
+      &lt;TestId&gt;xUnit::0D52BD19-B12E-49D8-B622-1EE7E066FEF3::net9.0::Test.BPlusTreeTest.TreeTest&lt;/TestId&gt;&#xD;
     &lt;/TestAncestor&gt;&#xD;
     &lt;ProjectFile&gt;0D52BD19-B12E-49D8-B622-1EE7E066FEF3/d:BPlusTreeTest/f:IndexPageTest.cs&lt;/ProjectFile&gt;&#xD;
     &lt;ProjectFile&gt;0D52BD19-B12E-49D8-B622-1EE7E066FEF3/d:BPlusTreeTest/f:LeafPageTest.cs&lt;/ProjectFile&gt;&#xD;
+    &lt;ProjectFile&gt;0D52BD19-B12E-49D8-B622-1EE7E066FEF3/d:PageTest/f:PageCacheTest.cs&lt;/ProjectFile&gt;&#xD;
+    &lt;ProjectFile&gt;0D52BD19-B12E-49D8-B622-1EE7E066FEF3/d:PageTest/f:IndexPageTest.cs&lt;/ProjectFile&gt;&#xD;
+    &lt;ProjectFile&gt;0D52BD19-B12E-49D8-B622-1EE7E066FEF3/d:PageTest/f:PageManagerTest.cs&lt;/ProjectFile&gt;&#xD;
+    &lt;ProjectFile&gt;0D52BD19-B12E-49D8-B622-1EE7E066FEF3/d:Utils/f:AsyncReaderWriterLockTest.cs&lt;/ProjectFile&gt;&#xD;
   &lt;/Or&gt;&#xD;
 &lt;/SessionState&gt;</s:String></wpf:ResourceDictionary>

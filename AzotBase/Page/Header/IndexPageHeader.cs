@@ -9,13 +9,11 @@ public struct IndexPageHeader : ITreePageHeader
     
     public int Id { get; set; }
     public PageType PageType { get; set; }
-    public int ParentId { get; set; }
     public int KeyCount { get; set; }
-    public byte IsLeaf { get; set; }
     
     public IndexPageHeader(int id)
     {
         Id = id;
-        ParentId = -1;
+        PageType = PageType.IndexPage;
     }
 }

@@ -10,3 +10,4 @@ C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.dll
 C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\refint\AzotBase.dll
 C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.pdb
 C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\ref\AzotBase.dll
+C:\Users\GEFEH\source\projects\AzotBase\AzotBase\obj\Debug\net9.0\AzotBase.sourcelink.json

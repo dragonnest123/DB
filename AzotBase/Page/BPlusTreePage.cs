@@ -1,8 +1,9 @@
+using System.Data.SqlTypes;
 using AzotBase.Page.Header;
 
 namespace AzotBase.Page;
 
-public abstract class BPlusTreePage<THeader> where THeader : unmanaged, ITreePageHeader
+public abstract class BPlusTreePage<THeader> : PageBase where THeader : unmanaged, ITreePageHeader
 {
     public THeader Header;
     public int[] Keys;

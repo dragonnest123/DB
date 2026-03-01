@@ -2,14 +2,14 @@ using System.Runtime.CompilerServices;
 
 namespace AzotBase.Page;
 
-public class SystemPage
+public class SystemPage : PageBase, IPage<SystemPage>
 {
     public const ushort PageSize = 4096;
     public int PagesCount; //DISK
     public int NextPageIndex = -1; //DISK
     public Queue<int> FreePages = new Queue<int>(); //RAM
 
-    public byte[] ToByteArray()
+    public override byte[] ToByteArray()
     {
         var array = new byte[PageSize];
         
@@ -42,5 +42,15 @@ public class SystemPage
         }
 
         return systemPage;
+    }
+
+    public static SystemPage FromByteArray(Span<byte> bytes)
+    {
+        throw new NotImplementedException();
+    }
+
+    public static SystemPage CreateEmpty(int id)
+    {
+        throw new NotImplementedException();
     }
 }

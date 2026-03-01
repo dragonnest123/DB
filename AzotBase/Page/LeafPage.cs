@@ -8,12 +8,11 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
 {
     public new static readonly int MaxKeys = (SystemPage.PageSize - LeafPageHeader.LengthBytes - sizeof(int)) / (3 * sizeof(int));
     
-    public (int PageId, int SlotId)[] Values;
+    public (int PageId, int SlotId)[] Values; //DISK
     
     public LeafPage(int id) : base(new LeafPageHeader(id), MaxKeys)
     {
         Values = new (int PageId, int SlotId)[MaxKeys];
-        Header.IsLeaf = 1;
     }
     
     private LeafPage(LeafPageHeader header, int[] keys,  (int PageId, int SlotId)[] values) : base(header, keys, MaxKeys)
@@ -22,7 +21,7 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
     }
     
     public void InsertKey(int key, int pageId, int slotId)
-    {  
+    {
         int i = Header.KeyCount - 1;
         while (i >= 0 && Keys[i] > key)
         {
@@ -33,25 +32,63 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         
         Keys[i + 1] = key;
         Values[i + 1] = (pageId, slotId);
+        
         Header.KeyCount++;
+        IsDirty = 1;
+    }
+    
+    public void InsertKeyAt(int index, int key, int pageId, int slotId)
+    {
+        int keysToMove = Header.KeyCount - index;
+        
+        Array.Copy(Keys, index, Keys, index + 1, keysToMove);
+        Keys[index] = key;
+        
+        Array.Copy(Values, index, Values, index + 1, keysToMove);
+        Values[index] = (pageId, slotId);
+        
+        Header.KeyCount++;
+        IsDirty = 1;
+    }
+
+    public void InsertRangeAt(int index, Span<int> keys, Span<(int PageId, int SlotId)> values)
+    {
+        keys.CopyTo(Keys.AsSpan()[index..]);
+        values.CopyTo(Values.AsSpan()[index..]);
+        
+        Header.KeyCount += keys.Length;
+        IsDirty = 1;
     }
 
     public void DeleteKey(int key)
     {
-        int idx = FindKey(key);
-        if (idx < 0) 
+        int index = FindKey(key);
+        if (index < 0) 
             return;
         
-        for (int i = idx; i < Header.KeyCount - 1; i++)
+        int keysToMove = Header.KeyCount - (index + 1);
+        if (keysToMove > 0)
         {
-            Keys[i] = Keys[i + 1];
-            Values[i] = Values[i + 1];
+            Array.Copy(Keys, index + 1, Keys, index, keysToMove);
+            Array.Copy(Values, index + 1, Values, index, keysToMove);
         }
-        
+
         Header.KeyCount--;
+        IsDirty = 1;
     }
     
-    public byte[] ToByteArray()
+    public void DeleteKeyAt(int index)
+    {
+        int keysToMove = Header.KeyCount - (index + 1);
+        
+        Array.Copy(Keys, index + 1, Keys, index, keysToMove);
+        Array.Copy(Values, index + 1, Values, index, keysToMove);
+        
+        Header.KeyCount--;
+        IsDirty = 1;
+    }
+
+    public override byte[] ToByteArray()
     {
         var result = new byte[SystemPage.PageSize];
 
@@ -73,6 +110,9 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
     public static LeafPage FromByteArray(Span<byte> bytes)
     {
         var header = StructSerializer.Deserialize<LeafPageHeader>(bytes[..LeafPageHeader.LengthBytes]);
+        if (header.PageType != PageType.LeafPage)
+            throw new Exception("Invalid page type");
+        
         var keys = new int[MaxKeys];
         var values = new (int PageId, int SlotId)[MaxKeys];
         
@@ -92,4 +132,6 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         
         return new LeafPage(header, keys, values); 
     }
+
+    public static LeafPage CreateEmpty(int id) => new LeafPage(id);
 }

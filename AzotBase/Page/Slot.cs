@@ -5,7 +5,7 @@ namespace AzotBase.Page;
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct Slot
 {
-    public const ushort SlotSize = 12;
+    public static readonly ushort SlotSize = (ushort)Marshal.SizeOf<Slot>(); //RAM
     public int Offset; //DISK
     public int Length; //DISK
     public int NextPageId; //DISK

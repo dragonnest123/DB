@@ -1,6 +1,6 @@
 namespace AzotBase.Page;
 
-public enum PageType : ushort
+public enum PageType : short
 {
     DataPage,
     IndexPage,

@@ -50,5 +50,4 @@ public class TableDiskManager : IDisposable, IAsyncDisposable
         _dataStream.ReadExactly(bytes);
         return SystemPage.FromByteArray(bytes);
     }
-    
 }

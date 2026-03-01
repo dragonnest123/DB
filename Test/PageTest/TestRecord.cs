@@ -1,4 +1,4 @@
-namespace Test;
+namespace Test.PageTest;
 
 public class TestRecord
 {

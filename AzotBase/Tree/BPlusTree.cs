@@ -1,288 +1,450 @@
-using System.Runtime.CompilerServices;
-using System.Text;
 using AzotBase.Page;
+using AzotBase.Utils;
 
 namespace AzotBase.Tree;
 
 public class BPlusTree
 {
-    private readonly PageManager _pageManager;
     private int _rootPageId;
-
-    public BPlusTree(PageManager pages, int m)
+    private readonly PageManager _pageManager;
+    
+    public BPlusTree(PageManager pageManager, int rootPageId)
     {
-        _pageManager = pages;
-
-        var root = _pages.AllocateLeaf();
-        _rootPageId = root.PageId;
+        _pageManager = pageManager;
+        _rootPageId = rootPageId;
     }
     
     public async Task Insert(int key, int pageId, int slotId)
     {
-        var leaf = await FindLeafNode(_rootPageId, key);
+        var path = new Stack<int>();
+        List<int> pinned = new List<int>();
+        
+        var leaf = await FindLeafPage(key, path);
+        PinPage(leaf.Header.Id, pinned);
+        
         leaf.InsertKey(key, pageId, slotId);
 
         if (leaf.Header.KeyCount == LeafPage.MaxKeys)
-            SplitLeaf(leaf);
-    }
-    
-    public void Delete(int key)
-    {
-        var leaf = FindLeafNode(_root, key, out var childIndex); 
+            await SplitLeaf(leaf, path, pinned);
+        else
+            await leaf.ExitWriteLock();
         
+        UnpinPinnedPages(pinned);
+    }
+     
+    public async Task Delete(int key)
+    {
+        var path = new Stack<int>();
+        List<int> pinned = new List<int>();
+        
+        var leaf = await FindLeafPage(key, path);
+        PinPage(leaf.Header.Id, pinned);
+
+        if (leaf.FindKey(key) < 0)
+            return;
+        
+        await leaf.EnterWriteLock();
+
         leaf.DeleteKey(key);
-        if (leaf.Parent != null)
-        {
-            var index = leaf.Parent.FindKey(key);
-            if (index >= 0)
-                leaf.Parent.Keys[index] = leaf.Keys[0];
-        }
         
-        if (leaf.KeyCount < m / 2)
-            BalanceNode(leaf, childIndex);
+        await leaf.ExitWriteLock();
+
+        if (leaf.Header.Id == _rootPageId)
+            return;
+        
+        if (leaf.Header.KeyCount < LeafPage.MaxKeys / 2)
+            await BalanceAfterDelete(path, pinned);
+        
+        UnpinPinnedPages(pinned);
     }
-    
-    private void BalanceNode(Node node, int childIndex)
+     
+    private async Task BalanceAfterDelete(Stack<int> path, List<int> pinned)
     {
-        while (true)
+        int pageId = path.Pop();
+
+        while (path.Count > 0)
         {
-            var parent = node.Parent;
-            if (parent == null) 
-                return;
-    
-            if (TryRedistributeKeys(node, childIndex)) 
-                return;
-    
-            MergeNodes(node, childIndex);
-    
-            if (parent.KeyCount < m / 2)
+            int parentId = path.Pop();
+            var parent = await _pageManager.LoadPage<IndexPage>(parentId);
+            PinPage(parent.Header.Id, pinned);
+
+            var pageType = await _pageManager.ReadPageType(pageId);
+            if (pageType == PageType.LeafPage)
             {
-                node = parent;
-                childIndex = GetChildIndex(parent); 
-                continue;
+                LeafPage page = await _pageManager.LoadPage<LeafPage>(pageId);
+                PinPage(page.Header.Id, pinned);
+                
+                if (page.Header.KeyCount >= LeafPage.MaxKeys / 2)
+                    return;
+                
+                await parent.EnterWriteLock();
+                await page.EnterWriteLock();
+                
+                if (await TryRedistributeLeaf(parent, page, pinned))
+                {
+                    await parent.ExitWriteLock();
+                    await page.ExitWriteLock();
+                    return;
+                }
+                
+                await page.ExitWriteLock();
+
+                await MergeLeaf(parent, pageId, pinned);
             }
-            break;
+            else
+            {
+                IndexPage page = await _pageManager.LoadPage<IndexPage>(pageId);
+                PinPage(page.Header.Id, pinned);
+                
+                int minKeys = (IndexPage.MaxKeys) / 2;
+                if (page.Header.KeyCount >= minKeys)
+                    return;
+                
+                await parent.EnterWriteLock();
+                await page.EnterWriteLock();
+
+                if (await TryRedistributeIndex(parent, page, pinned))
+                {
+                    await parent.ExitWriteLock();
+                    await page.ExitWriteLock();
+                    return;
+                }
+                
+                await page.ExitWriteLock();
+
+                await MergeIndex(parent, pageId, pinned);
+            }
+
+            pageId = parentId;
+
+            if (parent.Header.Id == _rootPageId && parent.Header.KeyCount == 0)
+            {
+                Interlocked.Exchange(ref _rootPageId, pageId);
+                await parent.ExitWriteLock();
+                return;
+            }
+            
+            await parent.ExitWriteLock();
         }
     }
-    
-    private bool TryRedistributeKeys(Node node, int childIndex)
+     
+    private async Task<bool> TryRedistributeLeaf(IndexPage parent, LeafPage page, List<int> pinned)
     {
-        var parent = node.Parent;
-        if (parent == null)
-            return false;
+        int index = Array.IndexOf(parent.ChildrenPageIds, page.Header.Id);
+
+        int leftId = index > 0 ? parent.ChildrenPageIds[index - 1] : -1;
+        int rightId = index < parent.Header.KeyCount ? parent.ChildrenPageIds[index + 1] : -1;
         
-        Node? left = childIndex > 0 ? parent.Children[childIndex - 1] : null;
-        Node? right = childIndex < parent.Children.Length - 1 ? parent.Children[childIndex + 1] : null;
-        if (TryBorrowFromLeft(node, left, childIndex) || TryBorrowFromRight(node, right, childIndex))
-            return true;
+        if (leftId != -1)
+        {
+            LeafPage left = await _pageManager.LoadPage<LeafPage>(leftId);
+            PinPage(left.Header.Id, pinned);
+            
+            if (left.Header.KeyCount > LeafPage.MaxKeys / 2)
+            {
+                await left.EnterWriteLock();
+                
+                int borrowedKey = left.Keys[left.Header.KeyCount - 1];
+                var borrowedValue = left.Values[left.Header.KeyCount - 1];
+
+                page.InsertKeyAt(0, borrowedKey, borrowedValue.PageId, borrowedValue.SlotId);
+                left.DeleteKeyAt(left.Header.KeyCount - 1);
+                parent.ReplaceKeyAt(index - 1, page.Keys[0]);
+                
+                await left.ExitWriteLock();
+                
+                return true;
+            }
+        }
+        
+        if (rightId != -1)
+        {
+            LeafPage right = await _pageManager.LoadPage<LeafPage>(rightId);
+            PinPage(right.Header.Id, pinned);
+
+            if (right.Header.KeyCount > LeafPage.MaxKeys / 2)
+            {
+                await right.EnterWriteLock();
+                
+                int borrowedKey = right.Keys[0];
+                var borrowedValue = right.Values[0];
+
+                page.InsertKeyAt(page.Header.KeyCount, borrowedKey, borrowedValue.PageId, borrowedValue.SlotId);
+                right.DeleteKeyAt(0);
+                parent.ReplaceKeyAt(index, right.Keys[0]);
+                
+                await right.ExitWriteLock();
+                
+                return true;
+            }
+        }
         
         return false;
     }
     
-    private bool TryBorrowFromLeft(Node node, Node? left, int childIndex)
+    private async Task<bool> TryRedistributeIndex(IndexPage parent, IndexPage page, List<int> pinned)
     {
-        var parent = node.Parent;
-        if (left == null || left.KeyCount <= m / 2 || parent == null)
-            return false;
+        int index = Array.IndexOf(parent.ChildrenPageIds, page.Header.Id);
+
+        int leftId = index > 0 ? parent.ChildrenPageIds[index - 1] : -1;
+        int rightId = index < parent.Header.KeyCount ? parent.ChildrenPageIds[index + 1] : -1;
         
-        var lastKeyIndex = left.KeyCount - 1;
-        if (node.IsLeaf)
-        {
-            ((LeafNode)node).InsertKey(
-                left.Keys[lastKeyIndex], ((LeafNode)left).Values[lastKeyIndex].PageId, ((LeafNode)left).Values[lastKeyIndex].SlotId);
-            parent.Keys[childIndex - 1] = node.Keys[0];
-            ((LeafNode)left).DeleteKey(left.Keys[lastKeyIndex]);
-        }
-        else
-        {
-            var leftChild = ((IndexNode)left).Children[lastKeyIndex + 1];
-            var rightChild = ((IndexNode)node).Children[0];
-            ((IndexNode)node).InsertKey(parent.Keys[childIndex - 1], leftChild, rightChild);
-            parent.Keys[childIndex - 1] = left.Keys[lastKeyIndex];
-            ((IndexNode)node).DeleteKey(left.Keys[lastKeyIndex], ((IndexNode)left).Children[lastKeyIndex]);
-        }
-    
-        return true;
-    }
-    
-    private bool TryBorrowFromRight(Node node, Node? right, int childIndex)
-    {
-        var parent = node.Parent;
-        if (right == null || right.KeyCount <= m / 2 || parent == null)
-            return false;
-    
-        var firstKeyIndex = 0;
-        if (node.IsLeaf)
-        {
-            ((LeafNode)node).InsertKey(
-                right.Keys[firstKeyIndex], ((LeafNode)right).Values[firstKeyIndex].PageId, ((LeafNode)right).Values[firstKeyIndex].SlotId);
-            ((LeafNode)right).DeleteKey(right.Keys[firstKeyIndex]);
-            parent.Keys[childIndex] = node.Keys[0];
-        }
-        else
-        {
-            var rightChild = ((IndexNode)right).Children[firstKeyIndex];
-            ((IndexNode)node).InsertKey(parent.Keys[childIndex], null, rightChild);
-            parent.Keys[childIndex] = right.Keys[firstKeyIndex];
-            ((IndexNode)node).DeleteKey(right.Keys[firstKeyIndex], ((IndexNode)right).Children[firstKeyIndex + 1]);
-        }
+        int minKeys = (IndexPage.MaxKeys) / 2;
         
-        return true;
-    }
-    
-    private void MergeNodes(Node node, int nodeIndex)
-    {
-        Node left;
-        Node right;
-        int parentKeyIndex;
-        if (nodeIndex == node.Parent.KeyCount)
+        if (leftId != -1)
         {
-            left = node.Parent.Children[nodeIndex - 1];
-            right = node;
-            parentKeyIndex = nodeIndex - 1;
-        }
-        else
-        {
-            left = node;
-            right = node.Parent.Children[nodeIndex + 1];
-            parentKeyIndex = nodeIndex;
-        }
-    
-        Node mergedNode;
-        if (node.IsLeaf)
-        {
-            mergedNode = new LeafNode(m)
+            IndexPage left = await _pageManager.LoadPage<IndexPage>(leftId);
+            PinPage(left.Header.Id, pinned);
+            
+            if (left.Header.KeyCount > minKeys)
             {
-                Next = ((LeafNode)right).Next,
-                Parent = left.Parent,
-                KeyCount = left.KeyCount + right.KeyCount
-            };
-            Array.Copy(left.Keys, 0, mergedNode.Keys, 0, left.KeyCount);
-            Array.Copy(right.Keys, 0, mergedNode.Keys, left.KeyCount, right.KeyCount);
-            Array.Copy(((LeafNode)left).Values, 0, ((LeafNode)mergedNode).Values, 0, left.KeyCount);
-            Array.Copy(((LeafNode)right).Values, 0, ((LeafNode)mergedNode).Values, left.KeyCount, right.KeyCount);
-        }
-        else
-        {
-            var leftChild = ((IndexNode)left).Children[parentKeyIndex + 1];
-            var rightChild = ((IndexNode)right).Children[0];
-            ((IndexNode)right).InsertKey(left.Parent.Keys[parentKeyIndex], leftChild, rightChild);
-            
-            mergedNode = new IndexNode(m)
-            {
-                Parent = left.Parent,
-                KeyCount = left.KeyCount + right.KeyCount
-            };
-            
-            //Now left and right has 2 copies so don't include last child of left node in copy func
-            
-            Array.Copy(left.Keys, 0, mergedNode.Keys, 0, left.KeyCount);
-            Array.Copy(right.Keys, 0, mergedNode.Keys, left.KeyCount, right.KeyCount);
-            Array.Copy(((IndexNode)left).Children, 0, ((IndexNode)mergedNode).Children, 0, left.KeyCount);
-            Array.Copy(((IndexNode)right).Children, 0, ((IndexNode)mergedNode).Children, left.KeyCount, right.KeyCount + 1);
-            foreach(var child in ((IndexNode)mergedNode).Children.Take(mergedNode.KeyCount + 1))
-                child.Parent = (IndexNode)mergedNode;
-        }
-        node.Parent.DeleteKey(node.Parent.Keys[parentKeyIndex], mergedNode);
-    
-        if (node.Parent.KeyCount == 0) //can happen only in root
-        {
-            mergedNode.Parent = null;
-            _root = mergedNode;
-        }
-    } 
-    
-    private void SplitNode(Node node)
-    {
-        Node leftNode;
-        Node rightNode;
-        IndexNode? parentNode = node.Parent;
-        
-        var spanKeys = node.Keys.AsSpan();
-        int parentKey;
-        if (node.IsLeaf)
-        {
-            LeafNode originNode = (LeafNode)node;
-            
-            rightNode = new LeafNode(m) { Next = originNode.Next };
-            originNode.Values.AsSpan()[(node.KeyCount / 2)..].CopyTo(((LeafNode)rightNode).Values);
-            spanKeys[(node.KeyCount / 2)..].CopyTo(rightNode.Keys);
-            
-            leftNode = new LeafNode(m) { Next = rightNode };
-            originNode.Values.AsSpan()[..(node.KeyCount / 2)].CopyTo(((LeafNode)leftNode).Values);
-            spanKeys[..(node.KeyCount / 2)].CopyTo(leftNode.Keys);
-            
-            leftNode.KeyCount = node.KeyCount / 2;
-            rightNode.KeyCount = node.KeyCount - leftNode.KeyCount;
-            parentKey = rightNode.Keys[0];
-        }
-        else
-        {
-            IndexNode originNode = (IndexNode)node;
-            
-            leftNode = new IndexNode(m);
-            leftNode.KeyCount = node.KeyCount / 2;
-            originNode.Children.AsSpan()[..(node.KeyCount / 2 + 1)].CopyTo(((IndexNode)leftNode).Children);
-            foreach (var child in ((IndexNode)leftNode).Children.Take(leftNode.KeyCount + 1))
-                child.Parent = (IndexNode)leftNode;
-            spanKeys[..(node.KeyCount / 2)].CopyTo(leftNode.Keys);
-            
-            rightNode = new IndexNode(m);
-            rightNode.KeyCount = node.KeyCount - leftNode.KeyCount - 1;
-            originNode.Children.AsSpan()[(node.KeyCount / 2 + 1)..].CopyTo(((IndexNode)rightNode).Children);
-            foreach (var child in ((IndexNode)rightNode).Children.Take(rightNode.KeyCount + 1))
-                child.Parent = (IndexNode)rightNode;
-            spanKeys[(node.KeyCount / 2 + 1)..].CopyTo(rightNode.Keys);
-            
-            parentKey = spanKeys[node.KeyCount / 2];
-        }
-        
-        if (parentNode != null)
-        {
-            parentNode.InsertKey(parentKey, leftNode, rightNode);
-            if (parentNode.KeyCount == m)
-            {
-                SplitNode(parentNode);
-                return;
+                await left.EnterWriteLock();
+                
+                int borrowedKey = parent.Keys[index - 1];
+                int borrowedChild = left.ChildrenPageIds[left.Header.KeyCount];
+                
+                page.InsertKeyAt(0, borrowedKey, borrowedChild);
+                left.DeleteKeyAt(left.Header.KeyCount - 1);
+                parent.ReplaceKeyAt(index - 1, left.Keys[left.Header.KeyCount - 1]);
+                
+                await left.ExitWriteLock();
+
+                return true;
             }
         }
-        else
+        
+        if (rightId != -1)
         {
-            parentNode = new IndexNode(m);
-            parentNode.InsertKey(parentKey, leftNode, rightNode);
-            _root = parentNode;
+            IndexPage right = await _pageManager.LoadPage<IndexPage>(rightId);
+            PinPage(right.Header.Id, pinned);
+            
+            if (right.Header.KeyCount > minKeys)
+            {
+                await right.EnterWriteLock();
+                
+                int borrowedKey = parent.Keys[index];
+                int borrowedChild = right.ChildrenPageIds[0];
+                
+                page.InsertKeyAt(page.Header.KeyCount, borrowedKey, borrowedChild);
+                right.DeleteKeyAt(0);
+                parent.ReplaceKeyAt(index, right.Keys[0]);
+                
+               await right.ExitWriteLock();
+
+               return true;
+            }
         }
         
-        leftNode.Parent = parentNode;
-        rightNode.Parent = parentNode;
+        return false;
     }
     
-    private async Task<LeafPage> FindLeafNode(int pageId, int key)
+    private async Task MergeLeaf(IndexPage parent, int pageId, List<int> pinned)
     {
-        int current = pageId;
+        int index = Array.IndexOf(parent.ChildrenPageIds, pageId);
+
+        int leftIndex = index > 0 ? index - 1 : index;
+        int rightIndex = leftIndex + 1;
+
+        int leftId = parent.ChildrenPageIds[leftIndex];
+        int rightId = parent.ChildrenPageIds[rightIndex];
+
+        LeafPage left = await _pageManager.LoadPage<LeafPage>(leftId);
+        LeafPage right = await _pageManager.LoadPage<LeafPage>(rightId);
+        PinPage(leftId, pinned);
+        PinPage(rightId, pinned);
+        
+        await left.EnterWriteLock();
+        await right.EnterReadLock();
+
+        left.InsertRangeAt(
+            left.Header.KeyCount, 
+            right.Keys.AsSpan()[..right.Header.KeyCount], 
+            right.Values.AsSpan()[..right.Header.KeyCount]);
+        parent.DeleteKey(parent.Keys[leftIndex]);
+        
+        await left.ExitWriteLock();
+        await right.ExitReadLock();
+    }
+    
+    private async Task MergeIndex(IndexPage parent, int pageId, List<int> pinned)
+    {
+        int index = Array.IndexOf(parent.ChildrenPageIds, pageId);
+
+        int leftIndex = index > 0 ? index - 1 : index;
+        int rightIndex = leftIndex + 1;
+
+        int leftId = parent.ChildrenPageIds[leftIndex];
+        int rightId = parent.ChildrenPageIds[rightIndex];
+
+        IndexPage left = await _pageManager.LoadPage<IndexPage>(leftId);
+        IndexPage right = await _pageManager.LoadPage<IndexPage>(rightId);
+        PinPage(leftId, pinned);
+        PinPage(rightId, pinned);
+
+        await left.EnterWriteLock();
+        await right.EnterReadLock();
+
+        int separator = parent.Keys[leftIndex];
+        
+        left.InsertKeyAt(left.Header.KeyCount, separator, right.ChildrenPageIds[0]);
+        left.InsertRangeAt(
+            left.Header.KeyCount, 
+            right.Keys.AsSpan()[..right.Header.KeyCount], 
+            right.ChildrenPageIds.AsSpan()[..(right.Header.KeyCount + 1)]);
+        parent.DeleteKey(separator);
+        
+        await left.ExitWriteLock();
+        await right.ExitReadLock();
+    }
+    
+    private async Task SplitLeaf(LeafPage leaf, Stack<int> path, List<int> pinned)
+    {
+        LeafPage rightLeaf = await _pageManager.AllocatePage<LeafPage>();
+        PinPage(rightLeaf.Header.Id, pinned);
+
+        await rightLeaf.EnterWriteLock();
+
+        int mid = leaf.Header.KeyCount / 2;
+        int rightCount = leaf.Header.KeyCount - mid;
+        
+        rightLeaf.InsertRangeAt(
+            0, 
+            leaf.Keys.AsSpan()[mid..(mid + rightCount)], 
+            leaf.Values.AsSpan()[mid..(mid + rightCount)]);
+    
+        leaf.Header.KeyCount = mid;
+        leaf.IsDirty = 1;
+
+        int parentKey = rightLeaf.Keys[0];
+        
+        await leaf.ExitWriteLock();
+        await rightLeaf.ExitWriteLock();
+        
+        await InsertIntoParent(path, parentKey, rightLeaf.Header.Id, pinned);
+    }
+    
+    private async Task SplitIndex(IndexPage index, Stack<int> path, List<int> pinned)
+    {
+        IndexPage rightIndex = await _pageManager.AllocatePage<IndexPage>();
+        PinPage(rightIndex.Header.Id, pinned);
+        
+        await rightIndex.EnterWriteLock();
+
+        int mid = index.Header.KeyCount / 2;
+        int promoteKey = index.Keys[mid];
+        int rightCount = index.Header.KeyCount - mid - 1;
+        
+        rightIndex.InsertRangeAt(
+            0, 
+            index.Keys.AsSpan()[(mid + 1)..(mid + 1 + rightCount)], 
+            index.ChildrenPageIds.AsSpan()[(mid + 1)..(mid + 1 + rightCount + 1)]);
+        
+        index.Header.KeyCount = mid;
+        index.IsDirty = 1;
+        
+        await index.ExitWriteLock();
+        await rightIndex.ExitWriteLock();
+        
+        await InsertIntoParent(path, promoteKey, rightIndex.Header.Id, pinned);
+    }
+     
+    private async Task InsertIntoParent(Stack<int> path, int key, int rightId, List<int> pinned)
+    {
+        path.Pop();
+        if (path.Count == 0)
+        {
+            var oldRootId = _rootPageId;
+            
+            IndexPage root = await _pageManager.AllocatePage<IndexPage>();
+            PinPage(root.Header.Id, pinned);
+            
+            await root.EnterWriteLock();
+            
+            root.Keys[0] = key;
+            root.ChildrenPageIds[0] = oldRootId;
+            root.ChildrenPageIds[1] = rightId;
+            root.Header.KeyCount = 1;
+            root.IsDirty = 1;
+            
+            await root.ExitWriteLock();
+            
+            Interlocked.Exchange(ref _rootPageId, root.Header.Id);
+            return;
+        }
+
+        int parentId = path.Peek();
+        var parent = await _pageManager.LoadPage<IndexPage>(parentId);
+        PinPage(parentId, pinned);
+        
+        await parent.EnterWriteLock();
+
+        parent.InsertKey(key, rightId);
+
+        if (parent.Header.KeyCount == IndexPage.MaxKeys)
+            await SplitIndex(parent, path, pinned);
+        else
+            await parent.ExitWriteLock();
+    }
+
+    private async Task<LeafPage> FindLeafPage(int key, Stack<int> path)
+    {
         while (true)
         {
-            var pageType = await _pageManager.ReadPageType(current);
-            if (pageType == PageType.LeafPage)
-                return await _pageManager.ReadPage<LeafPage>(current);
+            PageBase current = await _pageManager.LoadPage<PageBase>(_rootPageId);
 
-            var indexPage = await _pageManager.ReadPage<IndexPage>(current);
-            int childIndex = BinarySearchGreaterIndex(
-                key,
-                indexPage.Keys,
-                indexPage.Header.KeyCount);
+            await current.EnterReadLock();
 
-            current = indexPage.ChildrenPageIds[childIndex];
+            while (current is IndexPage index)
+            {
+                int childIndex = BinarySearchGreaterIndex(key, index.Keys, index.Header.KeyCount);
+                var childId = index.ChildrenPageIds[childIndex];
+                var child = await _pageManager.LoadPage<PageBase>(childId);
+
+                await child.EnterReadLock();
+                if (IsSafe(child))
+                    await index.ExitReadLock();
+                else if (await index.TryUpgradeReadLock())
+                    path.Push(index.Header.Id);
+                else
+                {
+                    await index.ExitReadLock();
+                    await child.EnterReadLock();
+                    current = await _pageManager.LoadPage<PageBase>(_rootPageId);
+                    continue;
+                }
+
+                current = child;
+            }
+
+            var leaf = (LeafPage)current;
+
+            if (await leaf.TryUpgradeReadLock())
+                path.Push(leaf.Header.Id);
+            else
+            {
+                await leaf.ExitReadLock();
+                continue;
+            }
+
+            return leaf;
         }
     }
-    
-    private static int GetChildIndex(Node node)
+
+    private static bool IsSafe(PageBase page)
     {
-        var parent = node.Parent;
-        if (parent == null)
-            return -1;
+        switch (page)
+        {
+            case LeafPage leaf: 
+                if (leaf.Header.KeyCount < LeafPage.MaxKeys - 1 && leaf.Header.KeyCount >= LeafPage.MaxKeys / 2 ) 
+                    return true;
+                break;
+            case IndexPage index:
+                if (index.Header.KeyCount < IndexPage.MaxKeys - 1 && index.Header.KeyCount >= IndexPage.MaxKeys / 2 ) 
+                    return true;
+                break;
+        }
         
-        return BinarySearchGreaterIndex(node.Keys[0], parent.Keys, parent.KeyCount);
+        return false;
     }
     
     private static int BinarySearchGreaterIndex(int key, int[] keys, int keysCount)
@@ -299,5 +461,43 @@ public class BPlusTree
                 left = mid + 1;
         }
         return left;
+    }
+
+    private void PinPage(int id, List<int> pinned)
+    {
+        _pageManager.PinPage(id);
+        pinned.Add(id);
+    }
+
+    private void UnpinPinnedPages(List<int> pinned)
+    {
+        foreach (int id in pinned)
+            _pageManager.UnpinPage(id);
+    }
+    
+    public async Task<int[]> InOrder()
+    {
+        var result = new List<int>();
+        
+        await InOrderTraversal(_rootPageId, result);
+        return result.ToArray();
+    } 
+    
+    private async Task InOrderTraversal(int pageId, List<int> result)
+    {
+        var pageType = await _pageManager.ReadPageType(pageId);
+        if (pageType == PageType.LeafPage)
+        {
+            LeafPage page = await _pageManager.LoadPage<LeafPage>(pageId);
+            result.AddRange(page.Keys.Take(page.Header.KeyCount));
+            return;
+        }
+        
+        var indexPage = await _pageManager.LoadPage<IndexPage>(pageId);
+        if (indexPage.Header.KeyCount == 0)
+            return;
+        
+        foreach (var child in indexPage.ChildrenPageIds.Take(indexPage.Header.KeyCount + 1))
+            await InOrderTraversal(child, result);
     }
 }

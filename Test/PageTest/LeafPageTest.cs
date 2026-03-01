@@ -1,6 +1,6 @@
 using AzotBase.Page;
 
-namespace Test.BPlusTreeTest;
+namespace Test.PageTest;
 
 public class LeafPageTest
 {
