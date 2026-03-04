@@ -1,8 +1,9 @@
+using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 
 namespace AzotBase.Page;
 
-public class PageCache<V> where V : IPage
+public class PageCache<V> where V : PageBase
 {
     public class Node
     {
@@ -36,56 +37,43 @@ public class PageCache<V> where V : IPage
     public readonly int Capacity;
     public event EventHandler<DeleteEventArgs>? DeleteEvent;
     
-    private readonly Dictionary<int, Node> _cache = new Dictionary<int, Node>();
+    private readonly ConcurrentDictionary<int, Node> _cache = new ConcurrentDictionary<int, Node>();
     private readonly Node head;
     private Node tail;
     private int _pinnedCount;
+    
     private readonly SemaphoreSlim _unpinnedPageSignal = new SemaphoreSlim(0);
+    private readonly SemaphoreSlim _addLock = new SemaphoreSlim(1, 1);
+    private readonly Lock _lock = new Lock();
 
     public PageCache(int capacity)
     {
         head = tail = new Node(default, default);
         Capacity = capacity;
     }
-
-    private Lock _lruLock = new Lock();
     public bool TryGetValue(int key, [NotNullWhen(true)] out V? value)
     {
-        lock(_lruLock)
+        if (_cache.TryGetValue(key, out Node? cachedNode))
         {
-            if (!_cache.TryGetValue(key, out Node? cachedNode))
-            {
-                value = default(V);
-                return false;
-            }
-            
-            if (cachedNode != tail)
-            {
-                DeleteNode(cachedNode);
-                InsertTail(cachedNode);
-            }
-            
+            MoveToTail(cachedNode);
             value = cachedNode.Value;
             return true;
         }
+        
+        value = default(V);
+        return false;
     }
-
-    private SemaphoreSlim _addLock = new SemaphoreSlim(1, 1);
+    
     public async Task AddAsync(int key, V value)
     {
-        var node = new Node(key, value);
         if (_cache.TryGetValue(key, out Node? cachedNode))
         {
-            if (cachedNode != tail)
-            {
-                DeleteNode(cachedNode);
-                InsertTail(node);
-                _cache[key] = node;
-            }
             cachedNode.Value = value;
+            MoveToTail(cachedNode);
             return;
         }
-
+        
+        var node = new Node(key, value);
         Node? deletedNode = null;
         //If all nodes pinned then cash blocked
         await _addLock.WaitAsync();
@@ -129,16 +117,34 @@ public class PageCache<V> where V : IPage
     
     private void InsertTail(Node node)
     {
-        node.Prev = tail;
-        tail.Next = node;
-        tail = tail.Next;
+        lock (_lock)
+        {
+            node.Prev = tail;
+            tail.Next = node;
+            tail = tail.Next;
+        }
     }
 
     private void DeleteNode(Node node)
     {
-        node.Prev.Next = node.Next;
-        if (node.Next != null)
-            node.Next.Prev = node.Prev;
+        lock (_lock)
+        {
+            node.Prev.Next = node.Next;
+            if (node.Next != null)
+                node.Next.Prev = node.Prev;
+        }
+    }
+    
+    private void MoveToTail(Node node)
+    {
+        if (node == tail) 
+            return;
+
+        lock (_lock)
+        {
+            DeleteNode(node);
+            InsertTail(node);
+        }
     }
 
     private bool TryDeleteFirstUnpinned([NotNullWhen(true)] out Node? deletedNode)
@@ -148,23 +154,31 @@ public class PageCache<V> where V : IPage
             deletedNode = null;
             return false;
         }
-        
-        var curr = head.Next;
-        while (curr != null && curr.PinCount != 0)
-            curr = curr.Next;
 
-        if (curr == null)
+        Node? curr;
+        lock (_lock)
         {
-            deletedNode = null;
-            return false;
+            curr = head.Next;
+            while (curr != null && curr.PinCount != 0)
+                curr = curr.Next;
+
+            if (curr == null)
+            {
+                deletedNode = null;
+                return false;
+            }
+
+            DeleteNode(curr);
+        }
+        
+        if (_cache.TryRemove(curr.Key, out _))
+        {
+            deletedNode = curr;
+            return true;
         }
 
-        var node = _cache[curr.Key];
-        DeleteNode(node);
-        _cache.Remove(curr.Key);
-
-        deletedNode = node;
-        return true;
+        deletedNode = null;
+        return false;
     }
     
     private void OnDeleteEvent(DeleteEventArgs e) => DeleteEvent?.Invoke(this, e);

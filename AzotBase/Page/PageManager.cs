@@ -2,9 +2,16 @@ using AzotBase.Utils;
 
 namespace AzotBase.Page;
 
+public enum PageLockMode
+{
+    ReadLock,
+    WriteLock,
+    NoLock
+}
+
 public class PageManager
 {
-    private readonly PageCache<IPage> _cache = new PageCache<IPage>(1000);
+    private readonly PageCache<PageBase> _cache = new PageCache<PageBase>(100000);
     private readonly FileStream _fileStream;
     private readonly Queue<int> _freePages = new Queue<int>();
 
@@ -19,10 +26,12 @@ public class PageManager
         };
     }
 
-    public async Task<T> AllocatePage<T>() where T : IPage<T>
+    public async Task<T> AllocatePage<T>(PageLockMode lockMode = PageLockMode.NoLock) where T : PageBase, IPage<T>
     {
         var pageId = AllocatePageId();
         var page = T.CreateEmpty(pageId);
+        
+        await LockPage(page, lockMode);
         
         await WritePage(page, pageId);
         
@@ -43,10 +52,13 @@ public class PageManager
         return (PageType)BitConverter.ToInt16(typeBytes, 0);
     }
     
-    public async Task<T> LoadPage<T>(int pageId) where T : IPage<T>
+    public async Task<T> LoadPage<T>(int pageId, PageLockMode lockMode = PageLockMode.NoLock) where T : PageBase, IPage<T>
     {
-        if (_cache.TryGetValue(pageId, out IPage? cached))
+        if (_cache.TryGetValue(pageId, out PageBase? cached))
+        {
+            await LockPage(cached, lockMode);
             return (T)cached;
+        }
         
         var bytes = new byte[SystemPage.PageSize];
         
@@ -56,6 +68,8 @@ public class PageManager
             pageId * SystemPage.PageSize);
         
         var page = T.FromByteArray(bytes);
+        
+        await LockPage(page, lockMode);
         
         await _cache.AddAsync(pageId, page);
 
@@ -84,5 +98,19 @@ public class PageManager
             return _freePages.Dequeue();
 
         return (int)(_fileStream.Length / SystemPage.PageSize);
+    }
+
+    private async Task LockPage(PageBase page, PageLockMode lockMode)
+    {
+        switch (lockMode)
+        {
+            case PageLockMode.ReadLock: await page.EnterReadLock();
+                break;
+            case PageLockMode.WriteLock: await page.EnterWriteLock();
+                break;
+            case PageLockMode.NoLock:
+                break;
+            default: throw new ArgumentOutOfRangeException();
+        }
     }
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using AzotBase.Page;
@@ -118,17 +119,27 @@ public class PageCacheTests
     [Fact]
     public async Task Concurrent_AddAndGetValueWith_ShouldReturnAddedValue()
     {
-        var cache = new PageCache<DataPage>(10);
+        var cacheSize = 1000;
+        var cache = new PageCache<DataPage>(cacheSize);
 
-        var tasks = Enumerable.Range(0, 15)
-            .Select(async i =>
+        var threadCount = 32;
+        var addCountPerThread = 10000;
+        
+        ConcurrentBag<bool> results = new ConcurrentBag<bool>();
+        
+        var tasks = Enumerable.Range(0, threadCount)
+            .Select(t => Task.Run(async () =>
             {
-                var page = new DataPage(i);
-                await cache.AddAsync(i, page);
-                return cache.TryGetValue(i, out _);
-            });
+                for (int k = 0; k <= addCountPerThread; k++)
+                {
+                    var id = t * addCountPerThread + k;
+                    var page = new DataPage(id);
+                    await cache.AddAsync(id, page);
+                    results.Add(cache.TryGetValue(id, out _));
+                }
+            }));
 
-        var results = await Task.WhenAll(tasks);
+        await Task.WhenAll(tasks);
 
         Assert.All(results, Assert.True);
     }

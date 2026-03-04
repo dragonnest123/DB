@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using AzotBase.Page;
 using AzotBase.Tree;
 using Xunit.Abstractions;
@@ -90,7 +91,7 @@ public class TreeTest
     [Fact]
     public async Task Delete_ManyKeys_ShouldRemainConsistent()
     {
-        int count = LeafPage.MaxKeys * 4;
+        int count = LeafPage.MaxKeys * 16;
         
         for (int i = 0; i < count; i++)
             await _tree.Insert(i, 1, 1);
@@ -141,10 +142,10 @@ public class TreeTest
     [Fact]
     public async Task Concurrent_Insert_ShouldNotCorruptTree()
     {
-        int threadCount = 8;
-        int keysPerThread = 1000;
+        int threadCount = 16;
+        int keysPerThread = 5000;
 
-        List<int> expected = new List<int>();
+        ConcurrentBag<int> expected = new ConcurrentBag<int>();
 
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
@@ -154,6 +155,7 @@ public class TreeTest
                     int key = t * keysPerThread + i;
                     expected.Add(key);
                     await _tree.Insert(key, 1, 1);
+
                 }
             }))
             .ToArray();
@@ -161,8 +163,29 @@ public class TreeTest
         await Task.WhenAll(tasks);
 
         var keys = await _tree.InOrder();
-        
         Assert.Equal(threadCount * keysPerThread, keys.Length);
         Assert.Equal(expected.OrderBy(x => x), keys);
+    }
+    
+    [Fact]
+    public async Task Insert_SameKeys_HighContention_ShouldBeCorrect()
+    {
+        // Все потоки вставляют в один диапазон = максимальная конкуренция на split
+        int threadCount = 8;
+        var barrier = new Barrier(threadCount);
+    
+        var tasks = Enumerable.Range(0, threadCount)
+            .Select(t => Task.Run(async () =>
+            {
+                barrier.SignalAndWait(); // все стартуют одновременно
+                for (int i = 0; i < 100; i++)
+                    await _tree.Insert(t + i * threadCount, 1, 1);
+            }))
+            .ToArray();
+
+        await Task.WhenAll(tasks);
+
+        var result = await _tree.InOrder();
+        Assert.Equal(threadCount * 100, result.Length);
     }
 }
