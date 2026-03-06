@@ -23,14 +23,12 @@ public abstract class PageBase : IPage<PageBase>
 
     public async Task EnterWriteLock()
     {
-        Debug.Write(1);
         await _pageLock.EnterWriteLock();
     }
 
     public async Task ExitWriteLock()
     {
         await _pageLock.ExitWriteLock();
-        Debug.Write(0);
     }
 
     public async Task<bool> TryUpgradeReadLock()

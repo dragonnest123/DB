@@ -170,14 +170,13 @@ public class TreeTest
     [Fact]
     public async Task Insert_SameKeys_HighContention_ShouldBeCorrect()
     {
-        // Все потоки вставляют в один диапазон = максимальная конкуренция на split
         int threadCount = 8;
         var barrier = new Barrier(threadCount);
     
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
             {
-                barrier.SignalAndWait(); // все стартуют одновременно
+                barrier.SignalAndWait();
                 for (int i = 0; i < 100; i++)
                     await _tree.Insert(t + i * threadCount, 1, 1);
             }))

@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using AzotBase.Page;
 using AzotBase.Utils;
 
@@ -335,10 +336,7 @@ public class BPlusTree
 
         int parentKey = rightLeaf.Keys[0];
         
-        await leaf.ExitWriteLock();
-        await rightLeaf.ExitWriteLock(); 
-        
-        await InsertIntoParent(path, parentKey, rightLeaf.Header.Id, pinned);
+        await InsertIntoParent(path, parentKey, rightLeaf.Header.Id, leaf, rightLeaf, pinned);
     }
     
     private async Task SplitIndex(IndexPage index, Stack<int> path, List<int> pinned)
@@ -358,17 +356,17 @@ public class BPlusTree
         index.Header.KeyCount = mid;
         index.IsDirty = 1;
         
-        await index.ExitWriteLock();
-        await rightIndex.ExitWriteLock();
-        
-        await InsertIntoParent(path, promoteKey, rightIndex.Header.Id, pinned);
+        await InsertIntoParent(path, promoteKey, rightIndex.Header.Id, index, rightIndex, pinned);
     }
      
-    private async Task InsertIntoParent(Stack<int> path, int key, int rightId, List<int> pinned)
+    private async Task InsertIntoParent(Stack<int> path, int key, int rightId, PageBase left, PageBase right, List<int> pinned)
     {
         if (path.Count == 0)
         {
             await CreateNewRoot(key, rightId, pinned);
+            
+            await left.ExitWriteLock();
+            await right.ExitWriteLock();
             
             return;
         }
@@ -378,6 +376,9 @@ public class BPlusTree
         PinPage(parentId, pinned);
 
         parent.InsertKey(key, rightId);
+        
+        await left.ExitWriteLock();
+        await right.ExitWriteLock();
 
         if (parent.Header.KeyCount == IndexPage.MaxKeys)
             await SplitIndex(parent, path, pinned);
@@ -399,7 +400,15 @@ public class BPlusTree
     
     private async Task<LeafPage?> TryFindLeafPage(int key, OperationType op, Stack<int> path)
     {
-        PageBase current = await _pageManager.LoadPage<PageBase>(_rootPageId, PageLockMode.ReadLock);
+        var rootId = _rootPageId;
+        PageBase current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.ReadLock);
+        while (rootId != _rootPageId)
+        {
+            await current.ExitReadLock();
+            
+            rootId = _rootPageId;
+            current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.ReadLock);
+        }
 
         while (current is IndexPage index)
         {
@@ -430,9 +439,7 @@ public class BPlusTree
         var leaf = (LeafPage)current;
 
         if (await leaf.TryUpgradeReadLock())
-        {
             return leaf;
-        }
         
         await leaf.ExitReadLock();
         
@@ -452,9 +459,9 @@ public class BPlusTree
         root.Header.KeyCount = 1;
         root.IsDirty = 1;
             
-        await root.ExitWriteLock();
-            
         Interlocked.Exchange(ref _rootPageId, root.Header.Id);
+        
+        await root.ExitWriteLock();
     }
 
     private static bool IsSafe(PageBase page, OperationType op)
@@ -528,27 +535,45 @@ public class BPlusTree
     public async Task<int[]> InOrder()
     {
         var result = new List<int>();
+        var visited = new HashSet<int>();
         
-        await InOrderTraversal(_rootPageId, result);
+        await InOrderTraversal(_rootPageId, result, visited);
         return result.ToArray();
     } 
     
-    private async Task InOrderTraversal(int pageId, List<int> result)
+    private async Task InOrderTraversal(int pageId, List<int> result, HashSet<int> visited)
     {
+        if (!visited.Add(pageId))
+            throw new Exception($"Cycle detected! Page {pageId} visited twice");
+
         var pageType = await _pageManager.ReadPageType(pageId);
         if (pageType == PageType.LeafPage)
         {
             LeafPage page = await _pageManager.LoadPage<LeafPage>(pageId);
-            result.AddRange(page.Keys.Take(page.Header.KeyCount));
+            var keys = page.Keys.Take(page.Header.KeyCount).ToArray();
+        
+            for (int i = 1; i < keys.Length; i++)
+                if (keys[i] <= keys[i-1])
+                    throw new Exception($"Leaf {pageId} unsorted at {i}: {keys[i-1]} >= {keys[i]}");
+        
+            result.AddRange(keys);
             return;
         }
-        
+    
         var indexPage = await _pageManager.LoadPage<IndexPage>(pageId);
-        if (indexPage.Header.KeyCount == 0)
-            return;
+        var childCount = indexPage.Header.KeyCount + 1;
         
-        foreach (var child in indexPage.ChildrenPageIds.Take(indexPage.Header.KeyCount + 1))
-            await InOrderTraversal(child, result);
+        for (int i = 1; i < indexPage.Header.KeyCount; i++)
+            if (indexPage.Keys[i] <= indexPage.Keys[i-1])
+                throw new Exception($"Index {pageId} unsorted at {i}");
+    
+
+        for (int i = 0; i < childCount; i++)
+            if (indexPage.ChildrenPageIds[i] == -1)
+                throw new Exception($"Index {pageId} has zero child at {i}");
+    
+        foreach (var child in indexPage.ChildrenPageIds.Take(childCount))
+            await InOrderTraversal(child, result, visited);
     }
 }
 
