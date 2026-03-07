@@ -63,7 +63,7 @@ public class TreeTest
     [Fact]
     public async Task Insert_ManyKeys_ShouldPreserveAllValues()
     {
-        int count = LeafPage.MaxKeys * 20;
+        int count = LeafPage.MaxKeys * 100;
 
         for (int i = 0; i < count; i++)
             await _tree.Insert(i, 1, 1);
@@ -142,8 +142,8 @@ public class TreeTest
     [Fact]
     public async Task Concurrent_Insert_ShouldNotCorruptTree()
     {
-        int threadCount = 16;
-        int keysPerThread = 5000;
+        int threadCount = 32;
+        int keysPerThread = 50000;
 
         ConcurrentBag<int> expected = new ConcurrentBag<int>();
 
@@ -168,23 +168,31 @@ public class TreeTest
     }
     
     [Fact]
-    public async Task Insert_SameKeys_HighContention_ShouldBeCorrect()
+    public async Task Concurrent_Delete_ShouldNotCorruptTree()
     {
-        int threadCount = 8;
-        var barrier = new Barrier(threadCount);
-    
+        int threadCount = 32;
+        int keysPerThread = 5000;
+        var keyCount = threadCount * keysPerThread * 2;
+        
+        for (int i = 0; i < keyCount; i++)
+            await _tree.Insert(i, 1, 1);
+
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
             {
-                barrier.SignalAndWait();
-                for (int i = 0; i < 100; i++)
-                    await _tree.Insert(t + i * threadCount, 1, 1);
+                for (int i = 0; i < keysPerThread; i++)
+                {
+                    int key = t * keysPerThread + i;
+                    await _tree.Delete(key);
+                }
             }))
             .ToArray();
-
+        
         await Task.WhenAll(tasks);
 
-        var result = await _tree.InOrder();
-        Assert.Equal(threadCount * 100, result.Length);
+        var keys = await _tree.InOrder();
+        var expected = Enumerable.Range(keyCount / 2, keyCount / 2);
+        Assert.Equal(threadCount * keysPerThread, keys.Length);
+        Assert.Equal(expected.OrderBy(x => x), keys);
     }
 }

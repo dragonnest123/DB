@@ -1,4 +1,4 @@
-using AzotBase.Utils;
+using System.Collections.Concurrent;
 
 namespace AzotBase.Page;
 
@@ -11,13 +11,15 @@ public enum PageLockMode
 
 public class PageManager
 {
-    private readonly PageCache<PageBase> _cache = new PageCache<PageBase>(100000);
+    private readonly PageCache<PageBase> _cache = new PageCache<PageBase>(1000000);
     private readonly FileStream _fileStream;
-    private readonly Queue<int> _freePages = new Queue<int>();
+    private readonly ConcurrentQueue<int> _freePages = new ConcurrentQueue<int>();
+    private int _nextPageId;
 
     public PageManager(FileStream fileStream)
     {
         _fileStream = fileStream;
+        _nextPageId = (int)_fileStream.Length / SystemPage.PageSize;
         _cache.DeleteEvent += async (_, args) =>
         {
             var page = args.Value;
@@ -35,7 +37,7 @@ public class PageManager
         
         await WritePage(page, pageId);
         
-        await _cache.AddAsync(pageId, page);
+        await _cache.TryAddAsync(pageId, page);
 
         return page;
     }
@@ -70,8 +72,9 @@ public class PageManager
         var page = T.FromByteArray(bytes);
         
         await LockPage(page, lockMode);
-        
-        await _cache.AddAsync(pageId, page);
+
+        if (!await _cache.TryAddAsync(pageId, page, false))
+            page = await LoadPage<T>(pageId, lockMode);
 
         return page;
     }
@@ -94,19 +97,21 @@ public class PageManager
     
     private int AllocatePageId()
     {
-        if (_freePages.Count > 0)
-            return _freePages.Dequeue();
+        if (_freePages.TryDequeue(out var pageId))
+            return pageId;
 
-        return (int)(_fileStream.Length / SystemPage.PageSize);
+        return Interlocked.Increment(ref _nextPageId) - 1;
     }
 
-    private async Task LockPage(PageBase page, PageLockMode lockMode)
+    private static async Task LockPage(PageBase page, PageLockMode lockMode)
     {
         switch (lockMode)
         {
-            case PageLockMode.ReadLock: await page.EnterReadLock();
+            case PageLockMode.ReadLock:
+                await page.EnterReadLock();
                 break;
-            case PageLockMode.WriteLock: await page.EnterWriteLock();
+            case PageLockMode.WriteLock:
+                await page.EnterWriteLock();
                 break;
             case PageLockMode.NoLock:
                 break;

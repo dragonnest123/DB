@@ -15,7 +15,7 @@ public class PageCacheTests
         var cache = new PageCache<DataPage>(2);
         var page = new DataPage(1);
 
-        await cache.AddAsync(1, page);
+        await cache.TryAddAsync(1, page);
 
         bool found = cache.TryGetValue(1, out var result);
 
@@ -31,13 +31,13 @@ public class PageCacheTests
         var page2 = new DataPage(2);
         var page3 = new DataPage(3);
 
-        await cache.AddAsync(1, page1);
-        await cache.AddAsync(2, page2);
+        await cache.TryAddAsync(1, page1);
+        await cache.TryAddAsync(2, page2);
         
         DataPage? deletedPage = null;
         cache.DeleteEvent += (_, e) => deletedPage = e.Value;
 
-        await cache.AddAsync(3, page3);
+        await cache.TryAddAsync(3, page3);
         
         Assert.Equal(page1, deletedPage);
         
@@ -54,15 +54,15 @@ public class PageCacheTests
         var page2 = new DataPage(2);
         var page3 = new DataPage(3);
 
-        await cache.AddAsync(1, page1);
-        await cache.AddAsync(2, page2);
+        await cache.TryAddAsync(1, page1);
+        await cache.TryAddAsync(2, page2);
 
         cache.PinPage(1);
 
         DataPage? deletedPage = null;
         cache.DeleteEvent += (_, e) => deletedPage = e.Value;
 
-        await cache.AddAsync(3, page3);
+        await cache.TryAddAsync(3, page3);
         
         Assert.Equal(page2, deletedPage);
         Assert.True(cache.TryGetValue(1, out var p1) && p1 == page1);
@@ -78,15 +78,15 @@ public class PageCacheTests
         var page2 = new DataPage(2);
         var page3 = new DataPage(3);
 
-        await cache.AddAsync(1, page1);
+        await cache.TryAddAsync(1, page1);
         cache.PinPage(1);
         cache.UnpinPage(1);
         
         bool deleted = false;
         cache.DeleteEvent += (_, _) => deleted = true;
         
-        await cache.AddAsync(2, page2);
-        await cache.AddAsync(3, page3);
+        await cache.TryAddAsync(2, page2);
+        await cache.TryAddAsync(3, page3);
 
         Assert.True(deleted);
     }
@@ -99,8 +99,8 @@ public class PageCacheTests
         var page2 = new DataPage(2);
         var page3 = new DataPage(3);
 
-        await cache.AddAsync(1, page1);
-        await cache.AddAsync(2, page2);
+        await cache.TryAddAsync(1, page1);
+        await cache.TryAddAsync(2, page2);
         
         bool found = cache.TryGetValue(1, out _);
         Assert.True(found);
@@ -108,7 +108,7 @@ public class PageCacheTests
         DataPage? deletedPage = null;
         cache.DeleteEvent += (_, e) => deletedPage = e.Value;
 
-        await cache.AddAsync(3, page3);
+        await cache.TryAddAsync(3, page3);
 
         Assert.Equal(page2, deletedPage);
         Assert.True(cache.TryGetValue(1, out _));
@@ -123,7 +123,7 @@ public class PageCacheTests
         var cache = new PageCache<DataPage>(cacheSize);
 
         var threadCount = 32;
-        var addCountPerThread = 10000;
+        var addCountPerThread = 20000;
         
         ConcurrentBag<bool> results = new ConcurrentBag<bool>();
         
@@ -134,7 +134,7 @@ public class PageCacheTests
                 {
                     var id = t * addCountPerThread + k;
                     var page = new DataPage(id);
-                    await cache.AddAsync(id, page);
+                    await cache.TryAddAsync(id, page);
                     results.Add(cache.TryGetValue(id, out _));
                 }
             }));

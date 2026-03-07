@@ -14,16 +14,16 @@ public class AsyncReaderWriterLock
     private bool _writerActive;
     private bool _upgradeActive;
 
-    public async Task EnterReadLock()
+    public async Task EnterReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync(milliSecondsTimeout);
 
         if (_writerActive || _waitingWritersCount > 0)
         {
             _waitingReadersCount++;
             
             _lock.Release();
-            await _readerQueue.WaitAsync();
+            await _readerQueue.WaitAsync(milliSecondsTimeout);
         }
         else
         {
@@ -32,9 +32,9 @@ public class AsyncReaderWriterLock
         }
     }
 
-    public async Task<bool> TryUpgradeReadLock()
+    public async Task<bool> TryUpgradeReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync(milliSecondsTimeout);
         
         if (_upgradeActive || _writerActive)
         {
@@ -49,9 +49,12 @@ public class AsyncReaderWriterLock
             _upgradeActive = true;
             
             _lock.Release();
-            await _upgradeLock.Value.WaitAsync();
+            await _upgradeLock.Value.WaitAsync(milliSecondsTimeout);
             return true;
         }
+
+        if (_readerCount < 0)
+            throw new InvalidOperationException("Upgrade operation with 0 readers");
       
         _writerActive = true;
         
@@ -59,7 +62,7 @@ public class AsyncReaderWriterLock
         return true;
     }
 
-    public async Task ExitReadLock()
+    public async Task ExitReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync();
 
@@ -93,9 +96,9 @@ public class AsyncReaderWriterLock
         _lock.Release();
     }
 
-    public async Task EnterWriteLock()
+    public async Task EnterWriteLock(int milliSecondsTimeout = Timeout.Infinite)
     {
-        await _lock.WaitAsync();
+        await _lock.WaitAsync(milliSecondsTimeout);
 
         if (_writerActive || _upgradeActive || _readerCount > 0)
         {
@@ -111,7 +114,7 @@ public class AsyncReaderWriterLock
         }
     }
 
-    public async Task ExitWriteLock()
+    public async Task ExitWriteLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync();
 

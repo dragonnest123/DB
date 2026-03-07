@@ -53,30 +53,32 @@ public class PageCache<V> where V : PageBase
     }
     public bool TryGetValue(int key, [NotNullWhen(true)] out V? value)
     {
-        if (_cache.TryGetValue(key, out Node? cachedNode))
+        if (!TryGetNode(key, out Node? node))
         {
-            MoveToTail(cachedNode);
-            value = cachedNode.Value;
-            return true;
+            value = null;
+            return false;
         }
         
-        value = default(V);
-        return false;
+        value = node.Value;
+        return true;
     }
     
-    public async Task AddAsync(int key, V value)
+    public async Task<bool> TryAddAsync(int key, V value, bool overrideIfExist = true)
     {
-        if (_cache.TryGetValue(key, out Node? cachedNode))
+        await _addLock.WaitAsync();
+        
+        if (TryGetNode(key, out Node? cachedNode))
         {
+            if (!overrideIfExist) 
+                return false;
+            
             cachedNode.Value = value;
-            MoveToTail(cachedNode);
-            return;
+            _addLock.Release();
+            return true;
         }
         
         var node = new Node(key, value);
         Node? deletedNode = null;
-        //If all nodes pinned then cash blocked
-        await _addLock.WaitAsync();
 
         if (_cache.Count == Capacity)
         {
@@ -90,6 +92,8 @@ public class PageCache<V> where V : PageBase
         
         if (deletedNode != null)
             OnDeleteEvent(new DeleteEventArgs(deletedNode.Key, deletedNode.Value));
+        
+        return true;
     }
     
     public void PinPage(int pageId)
@@ -113,6 +117,19 @@ public class PageCache<V> where V : PageBase
             Interlocked.Decrement(ref _pinnedCount);
             _unpinnedPageSignal.Release();
         }
+    }
+
+    private bool TryGetNode(int key, [NotNullWhen(true)] out Node? value)
+    {
+        if (!_cache.TryGetValue(key, out Node? cachedNode))
+        {
+            value = null;
+            return false;
+        }
+        
+        value = cachedNode;
+        MoveToTail(cachedNode);
+        return true;
     }
     
     private void InsertTail(Node node)

@@ -57,7 +57,7 @@ public class BPlusTree
         }
 
         leaf.DeleteKey(key);
-
+        
         if (leaf.Header.Id == _rootPageId || leaf.Header.KeyCount >= LeafPage.MaxKeys / 2)
         {
             await leaf.ExitWriteLock();
@@ -106,15 +106,14 @@ public class BPlusTree
      
     private async Task BalanceAfterDelete(LeafPage leafPage, Stack<int> path, List<int> pinned)
     {
-        int pageId = leafPage.Header.Id;
+        PageBase page = leafPage;
 
         while (path.Count > 0)
         {
             int parentId = path.Pop();
             var parent = await _pageManager.LoadPage<IndexPage>(parentId);
-            PinPage(parent.Header.Id, pinned);
-
-            PageBase page = await _pageManager.LoadPage<PageBase>(pageId);
+            PinPage(parentId, pinned);
+            
             if (page is LeafPage leaf)
             {
                 if (await TryRedistributeLeaf(parent, leaf, pinned))
@@ -126,7 +125,7 @@ public class BPlusTree
                 
                 await leaf.ExitWriteLock();
 
-                await MergeLeaf(parent, pageId, pinned);
+                await MergeLeaf(parent, leaf.Header.Id, pinned);
             }
             else if (page is IndexPage index)
             {
@@ -139,19 +138,21 @@ public class BPlusTree
                 
                 await index.ExitWriteLock();
 
-                await MergeIndex(parent, pageId, pinned);
+                await MergeIndex(parent, index.Header.Id, pinned);
             }
-
-            pageId = parentId;
-
+ 
+            page = parent;
+            
             if (parentId == _rootPageId && parent.Header.KeyCount == 0)
             {
+                Debug.WriteLine($"After : {parentId}, {_rootPageId}");
                 Interlocked.Exchange(ref _rootPageId, parent.ChildrenPageIds[0]);
                 await parent.ExitWriteLock();
                 return;
             }
             
-            await parent.ExitWriteLock();
+            if (path.Count == 0)
+                await parent.ExitWriteLock();
         }
     }
      
@@ -216,14 +217,14 @@ public class BPlusTree
         int leftId = index > 0 ? parent.ChildrenPageIds[index - 1] : -1;
         int rightId = index < parent.Header.KeyCount ? parent.ChildrenPageIds[index + 1] : -1;
         
-        int minKeys = (IndexPage.MaxKeys) / 2;
+        int minKeys = IndexPage.MaxKeys / 2;
         
         if (leftId != -1)
         {
             IndexPage left = await _pageManager.LoadPage<IndexPage>(leftId, PageLockMode.WriteLock);
             PinPage(left.Header.Id, pinned);
             
-            if (left.Header.KeyCount > minKeys)
+            if (left.Header.KeyCount > IndexPage.MaxKeys / 2)
             {
                 int borrowedKey = parent.Keys[index - 1];
                 int borrowedChild = left.ChildrenPageIds[left.Header.KeyCount];
@@ -271,6 +272,8 @@ public class BPlusTree
 
         int leftIndex = index > 0 ? index - 1 : index;
         int rightIndex = leftIndex + 1;
+        
+        //Debug.WriteLine($"MergeLeaf: leftId={parent.ChildrenPageIds[leftIndex]}, rightId={parent.ChildrenPageIds[rightIndex]}");
 
         int leftId = parent.ChildrenPageIds[leftIndex];
         int rightId = parent.ChildrenPageIds[rightIndex];
@@ -296,6 +299,8 @@ public class BPlusTree
 
         int leftIndex = index > 0 ? index - 1 : index;
         int rightIndex = leftIndex + 1;
+        
+        //Debug.WriteLine($"MergeIndex: leftId={parent.ChildrenPageIds[leftIndex]}, rightId={parent.ChildrenPageIds[rightIndex]}");
 
         int leftId = parent.ChildrenPageIds[leftIndex];
         int rightId = parent.ChildrenPageIds[rightIndex];
@@ -566,8 +571,7 @@ public class BPlusTree
         for (int i = 1; i < indexPage.Header.KeyCount; i++)
             if (indexPage.Keys[i] <= indexPage.Keys[i-1])
                 throw new Exception($"Index {pageId} unsorted at {i}");
-    
-
+        
         for (int i = 0; i < childCount; i++)
             if (indexPage.ChildrenPageIds[i] == -1)
                 throw new Exception($"Index {pageId} has zero child at {i}");

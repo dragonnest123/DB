@@ -11,29 +11,29 @@ public abstract class PageBase : IPage<PageBase>
     
     public abstract byte[] ToByteArray();
     
-    public async Task EnterReadLock()
+    public async Task EnterReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        await _pageLock.EnterReadLock();
+        await _pageLock.EnterReadLock(millisecondsTimeout);
     }
 
-    public async Task ExitReadLock()
+    public async Task ExitReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        await _pageLock.ExitReadLock();
+        await _pageLock.ExitReadLock(millisecondsTimeout);
     }
 
-    public async Task EnterWriteLock()
+    public async Task EnterWriteLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        await _pageLock.EnterWriteLock();
+        await _pageLock.EnterWriteLock(millisecondsTimeout);
     }
 
-    public async Task ExitWriteLock()
+    public async Task ExitWriteLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        await _pageLock.ExitWriteLock();
+        await _pageLock.ExitWriteLock(millisecondsTimeout);
     }
 
-    public async Task<bool> TryUpgradeReadLock()
+    public async Task<bool> TryUpgradeReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        return await _pageLock.TryUpgradeReadLock();
+        return await _pageLock.TryUpgradeReadLock(millisecondsTimeout);
     }
 
     public static PageBase FromByteArray(Span<byte> bytes)

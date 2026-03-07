@@ -50,8 +50,7 @@ public class AsyncReaderWriterLockTest
             for (int i = 0; i < 5; i++)
             {
                 bool isWriter = rnd.Next(0, 3) == 0;
-
-                await Task.Delay(rnd.Next(0, 10));
+                
                 if (isWriter)
                 {
                     await _rwLock.EnterWriteLock();
@@ -62,9 +61,7 @@ public class AsyncReaderWriterLockTest
 
                     if (Volatile.Read(ref activeReaders) > 0)
                         Interlocked.Exchange(ref violationDetected, 1);
-
-                    await Task.Delay(rnd.Next(1, 10));
-
+                    
                     Interlocked.Decrement(ref activeWriters);
                     
                     await _rwLock.ExitWriteLock();
@@ -77,8 +74,6 @@ public class AsyncReaderWriterLockTest
 
                     if (Volatile.Read(ref activeWriters) > 0)
                         Interlocked.Exchange(ref violationDetected, 1);
-
-                    await Task.Delay(rnd.Next(1, 10));
 
                     Interlocked.Decrement(ref activeReaders);
                     await _rwLock.ExitReadLock();
@@ -98,16 +93,14 @@ public class AsyncReaderWriterLockTest
         int activeWriters = 0;
         int violationDetected = 0;
 
-        var tasks = Enumerable.Range(0, 20).Select(_ => Task.Run(async () =>
+        var tasks = Enumerable.Range(0, 64).Select(_ => Task.Run(async () =>
         {
             var rnd = new Random(Guid.NewGuid().GetHashCode());
 
-            for (int i = 0; i < 5; i++)
+            for (int i = 0; i < 50000; i++)
             {
                 bool isWriter = rnd.Next(0, 4) == 0;     
-                bool doUpgrade = !isWriter && rnd.Next(0, 10) == 0; 
-
-                await Task.Delay(rnd.Next(0, 5));
+                bool doUpgrade = !isWriter && rnd.Next(0, 5) == 0; 
 
                 if (isWriter)
                 {
@@ -115,8 +108,7 @@ public class AsyncReaderWriterLockTest
                     var writers = Interlocked.Increment(ref activeWriters);
                     if (writers > 1 || Volatile.Read(ref activeReaders) > 0)
                         Interlocked.Exchange(ref violationDetected, 1);
-
-                    await Task.Delay(rnd.Next(1, 5));
+                    
                     Interlocked.Decrement(ref activeWriters);
 
                     await _rwLock.ExitWriteLock();
@@ -143,14 +135,11 @@ public class AsyncReaderWriterLockTest
                         if (writers > 1 || Volatile.Read(ref activeReaders) > 0)
                             Interlocked.Exchange(ref violationDetected, 1);
 
-                        await Task.Delay(rnd.Next(1, 5));
-
                         Interlocked.Decrement(ref activeWriters);
                         await _rwLock.ExitWriteLock();
                     }
                     else
                     {
-                        await Task.Delay(rnd.Next(1, 5));
                         Interlocked.Decrement(ref activeReaders);
                         await _rwLock.ExitReadLock();
                     }
