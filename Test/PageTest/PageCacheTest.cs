@@ -132,9 +132,10 @@ public class PageCacheTests
             {
                 for (int k = 0; k <= addCountPerThread; k++)
                 {
+                    bool overrideIfExist = new Random().Next(0, 1) == 0;
                     var id = t * addCountPerThread + k;
                     var page = new DataPage(id);
-                    await cache.TryAddAsync(id, page);
+                    await cache.TryAddAsync(id, page, overrideIfExist);
                     results.Add(cache.TryGetValue(id, out _));
                 }
             }));

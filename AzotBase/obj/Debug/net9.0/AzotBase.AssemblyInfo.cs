@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("AzotBase")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+345827130ddcbf9fabe2aca9d6f9286bada9d1d9")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4f11136f0ba5aa00c32d162063e594fae22521df")]
 [assembly: System.Reflection.AssemblyProductAttribute("AzotBase")]
 [assembly: System.Reflection.AssemblyTitleAttribute("AzotBase")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

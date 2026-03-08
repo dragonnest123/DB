@@ -8,6 +8,7 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
 {
     public new static readonly int MaxKeys = (SystemPage.PageSize - LeafPageHeader.LengthBytes - sizeof(int)) / (3 * sizeof(int));
     
+    public override int Id => Header.Id;
     public (int PageId, int SlotId)[] Values; //DISK
     
     public LeafPage(int id) : base(new LeafPageHeader(id), MaxKeys)
@@ -35,6 +36,10 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         
         Header.KeyCount++;
         IsDirty = 1;
+        
+        for (int j = 1; j < Header.KeyCount; j++)
+            if (Keys[j] <= Keys[j-1])
+                throw new Exception($"LeafPage {Header.Id} unsorted after InsertKey({key}) at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
     
     public void InsertKeyAt(int index, int key, int pageId, int slotId)
@@ -49,6 +54,10 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         
         Header.KeyCount++;
         IsDirty = 1;
+        
+        for (int j = 1; j < Header.KeyCount; j++)
+            if (Keys[j] <= Keys[j-1])
+                throw new Exception($"LeafPage {Header.Id} unsorted after InsertKeyAt({key}) at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
 
     public void InsertRangeAt(int index, Span<int> keys, Span<(int PageId, int SlotId)> values)
@@ -58,6 +67,10 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         
         Header.KeyCount += keys.Length;
         IsDirty = 1;
+        
+        for (int j = 1; j < Header.KeyCount; j++)
+            if (Keys[j] <= Keys[j-1])
+                throw new Exception($"LeafPage {Header.Id} unsorted after InsertRangeAt at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
 
     public void DeleteKey(int key)
@@ -75,6 +88,10 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
 
         Header.KeyCount--;
         IsDirty = 1;
+        
+        for (int j = 1; j < Header.KeyCount; j++)
+            if (Keys[j] <= Keys[j-1])
+                throw new Exception($"LeafPage {Header.Id} unsorted after DeleteKey({key}) at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
     
     public void DeleteKeyAt(int index)
@@ -86,6 +103,10 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         
         Header.KeyCount--;
         IsDirty = 1;
+        
+        for (int j = 1; j < Header.KeyCount; j++)
+            if (Keys[j] <= Keys[j-1])
+                throw new Exception($"LeafPage {Header.Id} unsorted after InsertKeyAt at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
 
     public override byte[] ToByteArray()

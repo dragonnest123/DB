@@ -69,8 +69,11 @@ public class PageCache<V> where V : PageBase
         
         if (TryGetNode(key, out Node? cachedNode))
         {
-            if (!overrideIfExist) 
+            if (!overrideIfExist)
+            {
+                _addLock.Release();
                 return false;
+            }
             
             cachedNode.Value = value;
             _addLock.Release();

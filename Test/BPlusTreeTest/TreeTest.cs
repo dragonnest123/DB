@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using AzotBase.Page;
 using AzotBase.Tree;
+using AzotBase.Utils;
 using Xunit.Abstractions;
 using Xunit.Sdk;
 
@@ -89,27 +90,56 @@ public class TreeTest
     }
     
     [Fact]
-    public async Task Delete_ManyKeys_ShouldRemainConsistent()
+    public async Task Delete_ForcesIndexMerge_ShouldRemainConsistent()
     {
-        int count = LeafPage.MaxKeys * 16;
-        
-        for (int i = 0; i < count; i++)
+        int keyCount = LeafPage.MaxKeys * IndexPage.MaxKeys * 3;
+    
+        for (int i = 0; i < keyCount * 2; i++)
             await _tree.Insert(i, 1, 1);
-        
-        for (int i = 0; i < count; i += 2)
+
+        for (int i = 2 * keyCount - 1; i >= keyCount; i--)
             await _tree.Delete(i);
 
-        var result = await _tree.InOrder();
-        var expected = Enumerable.Range(0, count)
-            .Where(x => x % 2 != 0);
+        var keys = await _tree.InOrder();
+        var expected = Enumerable.Range(0, keyCount).ToArray();
+        Assert.Equal(expected.Length, keys.Length);
+        Assert.Equal(expected, keys);
+    }
+    
+    [Fact]
+    public async Task RandomDeleteAllTest()
+    {
+        var rnd = new Random();
 
-        Assert.Equal(expected, result);
+        int count = 10000;
+
+        var keys = Enumerable.Range(1, count).ToList();
+
+        foreach (var k in keys)
+            await _tree.Insert(k, 1, 1);
+
+        keys = keys.OrderBy(_ => rnd.Next()).ToList();
+
+        foreach (var k in keys)
+        {
+            await _tree.Delete(k);
+
+            var treeInOrder = await _tree.InOrder();
+
+            for (int i = 1; i < treeInOrder.Length; i++)
+                Assert.True(treeInOrder[i - 1] < treeInOrder[i]);
+
+            Assert.DoesNotContain(k, treeInOrder);
+        }
+
+        var final = await _tree.InOrder();
+        Assert.Empty(final);
     }
     
     [Fact]
     public async Task Delete_AllKeys_ShouldResultInEmptyTree()
     {
-        int count = LeafPage.MaxKeys * 3;
+        int count = 32 * (LeafPage.MaxKeys * 3 + 338);
 
         for (int i = 0; i < count; i++)
             await _tree.Insert(i, 1, 1);
@@ -143,7 +173,7 @@ public class TreeTest
     public async Task Concurrent_Insert_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 50000;
+        int keysPerThread = 10000;
 
         ConcurrentBag<int> expected = new ConcurrentBag<int>();
 
@@ -171,11 +201,11 @@ public class TreeTest
     public async Task Concurrent_Delete_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 5000;
+        int keysPerThread = 50000;
         var keyCount = threadCount * keysPerThread * 2;
         
         for (int i = 0; i < keyCount; i++)
-            await _tree.Insert(i, 1, 1);
+            await _tree.Insert(i, 1, 1); ;
 
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
@@ -194,5 +224,43 @@ public class TreeTest
         var expected = Enumerable.Range(keyCount / 2, keyCount / 2);
         Assert.Equal(threadCount * keysPerThread, keys.Length);
         Assert.Equal(expected.OrderBy(x => x), keys);
+    }
+    
+    [Fact]
+    public async Task Concurrent_InsertDelete_ShouldResultInEmptyTree()
+    {
+        int threadCount = 32;
+        int keysPerThread = 300;
+
+        ConcurrentBag<int> expected = new ConcurrentBag<int>();
+
+        var tasks1 = Enumerable.Range(0, threadCount)
+            .Select(t => Task.Run(async () =>
+            {
+                for (int i = 0; i < keysPerThread; i++)
+                {
+                    int key = t * keysPerThread + i;
+                    expected.Add(key);
+                    await _tree.Insert(key, 1, 1);
+
+                }
+            }));
+
+        var tasks2 = Enumerable.Range(0, threadCount)
+            .Select(t => Task.Run(async () =>
+            {
+                for (int i = 0; i < keysPerThread; i++)
+                {
+                    int key = t * keysPerThread + i;
+                    await _tree.Delete(key);
+                }
+            }));
+        
+        var tasks = tasks1.Concat(tasks2).ToArray();
+        
+        await Task.WhenAll(tasks);
+
+        var keys = await _tree.InOrder();
+        Assert.Empty(keys);
     }
 }

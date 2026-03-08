@@ -6,6 +6,7 @@ namespace AzotBase.Page;
 public class DataPage : PageBase, IPage<DataPage>
 {
     public DataPageHeader Header; //DISK
+    public override int Id => Header.Id;
     
     private readonly byte[] _data; //DISK
 

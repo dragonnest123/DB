@@ -1,3 +1,6 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+
 namespace AzotBase.Utils;
 
 public class AsyncReaderWriterLock
@@ -13,7 +16,7 @@ public class AsyncReaderWriterLock
     private int _waitingReadersCount;
     private bool _writerActive;
     private bool _upgradeActive;
-
+    
     public async Task EnterReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync(milliSecondsTimeout);
@@ -23,7 +26,14 @@ public class AsyncReaderWriterLock
             _waitingReadersCount++;
             
             _lock.Release();
-            await _readerQueue.WaitAsync(milliSecondsTimeout);
+            if (!await _readerQueue.WaitAsync(milliSecondsTimeout))
+            {
+                await _lock.WaitAsync();
+                _waitingReadersCount--;
+                _lock.Release();
+                LockTracker.Dump();
+                throw new TimeoutException($"EnterReadLock timed out");
+            }
         }
         else
         {
@@ -49,7 +59,15 @@ public class AsyncReaderWriterLock
             _upgradeActive = true;
             
             _lock.Release();
-            await _upgradeLock.Value.WaitAsync(milliSecondsTimeout);
+            if (!await _upgradeLock.Value.WaitAsync(milliSecondsTimeout))
+            {
+                await _lock.WaitAsync();
+                _waitingReadersCount--;
+                _upgradeActive = false;
+                _readerCount++;
+                _lock.Release();
+                throw new TimeoutException("TryUpgradeReadLock timed out");
+            }
             return true;
         }
 
@@ -105,7 +123,14 @@ public class AsyncReaderWriterLock
             _waitingWritersCount++;
             
             _lock.Release();
-            await _writerQueue.WaitAsync();
+            if (!await _writerQueue.WaitAsync(milliSecondsTimeout))
+            {
+                await _lock.WaitAsync();
+                _waitingWritersCount--;
+                _lock.Release();
+                LockTracker.Dump();
+                throw new TimeoutException("EnterWriteLock timed out");
+            }
         }
         else
         {
