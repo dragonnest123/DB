@@ -28,10 +28,9 @@ public class AsyncReaderWriterLock
             _lock.Release();
             if (!await _readerQueue.WaitAsync(milliSecondsTimeout))
             {
-                await _lock.WaitAsync();
+                await _lock.WaitAsync(milliSecondsTimeout);
                 _waitingReadersCount--;
                 _lock.Release();
-                LockTracker.Dump();
                 throw new TimeoutException($"EnterReadLock timed out");
             }
         }
@@ -51,8 +50,9 @@ public class AsyncReaderWriterLock
             _lock.Release();
             return false;
         }
-
+        
         _readerCount--;
+
         if (_readerCount > 0)
         {
             _waitingWritersCount++;
@@ -61,8 +61,8 @@ public class AsyncReaderWriterLock
             _lock.Release();
             if (!await _upgradeLock.Value.WaitAsync(milliSecondsTimeout))
             {
-                await _lock.WaitAsync();
-                _waitingReadersCount--;
+                await _lock.WaitAsync(milliSecondsTimeout);
+                _waitingWritersCount--;
                 _upgradeActive = false;
                 _readerCount++;
                 _lock.Release();
@@ -125,10 +125,9 @@ public class AsyncReaderWriterLock
             _lock.Release();
             if (!await _writerQueue.WaitAsync(milliSecondsTimeout))
             {
-                await _lock.WaitAsync();
+                await _lock.WaitAsync(milliSecondsTimeout);
                 _waitingWritersCount--;
                 _lock.Release();
-                LockTracker.Dump();
                 throw new TimeoutException("EnterWriteLock timed out");
             }
         }
@@ -142,7 +141,7 @@ public class AsyncReaderWriterLock
     public async Task ExitWriteLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync();
-
+        
         if (_waitingWritersCount > 0)
         {
             _waitingWritersCount--;

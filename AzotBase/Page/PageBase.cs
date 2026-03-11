@@ -24,26 +24,17 @@ public abstract class PageBase : IPage<PageBase>
 
     public async Task EnterWriteLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        LockTracker.WaitingFor(Id);
         await _pageLock.EnterWriteLock(millisecondsTimeout);
-        LockTracker.Acquired(Id);
     }
 
     public async Task ExitWriteLock(int millisecondsTimeout = Timeout.Infinite)
     {
         await _pageLock.ExitWriteLock(millisecondsTimeout);
-        LockTracker.Released(Id);
     }
 
     public async Task<bool> TryUpgradeReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
-        LockTracker.WaitingFor(Id);
-        var result = await _pageLock.TryUpgradeReadLock(millisecondsTimeout);
-        if (result)
-            LockTracker.Acquired(Id);
-        else
-            LockTracker.CancelWait();
-        return result;
+        return await _pageLock.TryUpgradeReadLock(millisecondsTimeout);
     }
 
     public static PageBase FromByteArray(Span<byte> bytes)

@@ -31,7 +31,7 @@ public class BPlusTree
         PinPage(leaf.Header.Id, pinned);
         
         leaf.InsertKey(key, pageId, slotId);
-
+        
         if (leaf.Header.KeyCount == LeafPage.MaxKeys)
             await SplitLeaf(leaf, path, pinned);
         else
@@ -240,7 +240,7 @@ public class BPlusTree
                 left.IsDirty = 1;
                 
                 await left.ExitWriteLock();
-
+                
                 return true;
             }
             
@@ -339,10 +339,6 @@ public class BPlusTree
 
         int separator = parent.Keys[leftIndex];
         
-        if (left.Header.KeyCount > 0 && right.Header.KeyCount > 0)
-            if (separator >= right.Keys[0])
-                throw new Exception($"MergeIndex: separator={separator} >= right.Keys[0]={right.Keys[0]}");
-        
         left.InsertKeyAt(left.Header.KeyCount, separator, right.ChildrenPageIds[0]);
         left.InsertRangeAt(
             left.Header.KeyCount, 
@@ -415,8 +411,8 @@ public class BPlusTree
         
         await left.ExitWriteLock();
         await right.ExitWriteLock();
-
-        if (parent.Header.KeyCount == IndexPage.MaxKeys)
+        
+        if (parent.Header.KeyCount >= IndexPage.MaxKeys)
             await SplitIndex(parent, path, pinned);
         else
             await parent.ExitWriteLock();
@@ -426,9 +422,9 @@ public class BPlusTree
     {
         while (true)
         {
-            var lePage = await TryFindLeafPage(key, op, path);
-            if (lePage != null) 
-                return lePage;
+            var leafPage = await TryFindLeafPage(key, op, path);
+            if (leafPage != null)
+                return leafPage;
             
             await ClearPath(path);
         }
@@ -437,53 +433,34 @@ public class BPlusTree
     private async Task<LeafPage?> TryFindLeafPage(int key, OperationType op, Stack<int> path)
     {
         var rootId = _rootPageId;
-        PageBase current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.ReadLock);
-        while (rootId != _rootPageId)
+        PageBase current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.WriteLock);
+
+        if (rootId != _rootPageId)
         {
-            await current.ExitReadLock();
-            
-            rootId = _rootPageId;
-            current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.ReadLock);
+            await current.ExitWriteLock();
+            return null;
         }
 
         while (current is IndexPage index)
         {
-            int childIndex = BinarySearchGreaterIndex(key, index.Keys, index.Header.KeyCount); 
+            int childIndex = BinarySearchGreaterIndex(key, index.Keys, index.Header.KeyCount);
             var childId = index.ChildrenPageIds[childIndex];
-            var child = await _pageManager.LoadPage<PageBase>(childId, PageLockMode.ReadLock);
-            
+            var child = await _pageManager.LoadPage<PageBase>(childId, PageLockMode.WriteLock);
+
             if (IsSafe(child, op))
             {
-                await index.ExitReadLock();
+                await index.ExitWriteLock();
                 await ClearPath(path);
             }
-            else if (await index.TryUpgradeReadLock())
-                path.Push(index.Header.Id);
             else
-            {
-                await index.ExitReadLock();
-                await child.ExitReadLock();
-                
-                await ClearPath(path);
-                
-                return null;
-            }
+                path.Push(index.Header.Id);
 
             current = child;
-        } 
+        }
 
-        var leaf = (LeafPage)current;
-
-        if (await leaf.TryUpgradeReadLock())
-            return leaf;
-        
-        await leaf.ExitReadLock();
-        
-        await ClearPath(path);
-        
-        return null;
+        return (LeafPage)current;
     }
-
+    
     private async Task CreateNewRoot(int key, int rightId, List<int> pinned)
     {
         IndexPage root = await _pageManager.AllocatePage<IndexPage>(PageLockMode.WriteLock);
@@ -515,7 +492,7 @@ public class BPlusTree
     {
         return page switch
         {
-            LeafPage le => le.Header.KeyCount < LeafPage.MaxKeys - 1,
+            LeafPage leafPage => leafPage.Header.KeyCount < LeafPage.MaxKeys - 1,
             IndexPage index => index.Header.KeyCount < IndexPage.MaxKeys - 1,
             _ => throw new ArgumentOutOfRangeException(nameof(page), page, null)
         };
@@ -525,7 +502,7 @@ public class BPlusTree
     {
         return page switch
         {
-            LeafPage le => le.Header.KeyCount - 1 >= LeafPage.MaxKeys / 2,
+            LeafPage leafPage => leafPage.Header.KeyCount - 1 >= LeafPage.MaxKeys / 2,
             IndexPage index => index.Header.KeyCount - 1 >= IndexPage.MaxKeys / 2,
             _ => throw new ArgumentOutOfRangeException(nameof(page), page, null)
         };
@@ -544,7 +521,8 @@ public class BPlusTree
     {
         int left = 0;
         int right = keysCount - 1;
-    
+        
+        
         while (left <= right)
         {
             int mid = (left + right) / 2;

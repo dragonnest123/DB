@@ -108,10 +108,10 @@ public class PageManager
         switch (lockMode)
         {
             case PageLockMode.ReadLock:
-                await page.EnterReadLock(3000);
+                await page.EnterReadLock(1000);
                 break;
             case PageLockMode.WriteLock:
-                await page.EnterWriteLock(3000);
+                await page.EnterWriteLock(1000);
                 break;
             case PageLockMode.NoLock:
                 break;

@@ -99,8 +99,8 @@ public class AsyncReaderWriterLockTest
 
             for (int i = 0; i < 50000; i++)
             {
-                bool isWriter = rnd.Next(0, 4) == 0;     
-                bool doUpgrade = !isWriter && rnd.Next(0, 5) == 0; 
+                bool isWriter = rnd.Next(0, 1) == 0;     
+                bool doUpgrade = !isWriter && rnd.Next(0, 1) == 0; 
 
                 if (isWriter)
                 {

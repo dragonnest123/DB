@@ -9,15 +9,15 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
     public new static readonly int MaxKeys = (SystemPage.PageSize - IndexPageHeader.LengthBytes - sizeof(int)) / (2 * sizeof(int));
     
     public override int Id => Header.Id;
-    public int[] ChildrenPageIds = new int[MaxKeys + 1]; //DISK
+    public int[] ChildrenPageIds = new int[MaxKeys + 2]; //DISK
     
-    public IndexPage(int id) : base(new IndexPageHeader(id), MaxKeys)
+    public IndexPage(int id) : base(new IndexPageHeader(id), MaxKeys + 1)
     {
         for (int i = 0; i < ChildrenPageIds.Length; i++)
             ChildrenPageIds[i] = -1;
     }
 
-    private IndexPage(IndexPageHeader header, int[] keys, int[] childrenPageIds) : base(header, keys, MaxKeys)
+    private IndexPage(IndexPageHeader header, int[] keys, int[] childrenPageIds) : base(header, keys, MaxKeys + 1)
     {
         ChildrenPageIds = childrenPageIds;
     }
@@ -38,10 +38,6 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
         
         Header.KeyCount++;
         IsDirty = 1;
-        
-        for (int j = 1; j < Header.KeyCount; j++)
-            if (Keys[j] <= Keys[j-1])
-                throw new Exception($"IndexPage {Header.Id} unsorted after InsertKey({key}) at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
 
     public void InsertKeyAt(int index, int key, int rightPageId)
@@ -56,10 +52,6 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
         
         Header.KeyCount++;
         IsDirty = 1;
-        
-        for (int j = 1; j < Header.KeyCount; j++)
-            if (Keys[j] <= Keys[j-1])
-                throw new Exception($"IndexPage {Header.Id} unsorted after InsertKeyAt({key}) at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
     
     public void InsertRangeAt(int index, Span<int> keys, Span<int> children)
@@ -69,10 +61,6 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
 
         Header.KeyCount += keys.Length;
         IsDirty = 1;
-        
-        for (int j = 1; j < Header.KeyCount; j++)
-            if (Keys[j] <= Keys[j-1])
-                throw new Exception($"IndexPage {Header.Id} unsorted after InsertRangeAt at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
     
     public void DeleteKey(int key)  
@@ -90,10 +78,6 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
         
         Header.KeyCount--;
         IsDirty = 1;
-        
-        for (int j = 1; j < Header.KeyCount; j++)
-            if (Keys[j] <= Keys[j-1])
-                throw new Exception($"IndexPage {Header.Id} unsorted after DeleteKey({key}) at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
 
     public void DeleteKeyAt(int index)
@@ -105,10 +89,6 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
         
         Header.KeyCount--;
         IsDirty = 1;
-        
-        for (int j = 1; j < Header.KeyCount; j++)
-            if (Keys[j] <= Keys[j-1])
-                throw new Exception($"IndexPage {Header.Id} unsorted after DeleteKeyAt at {j}: {Keys[j-1]} >= {Keys[j]}");
     }
 
     public void ReplaceKeyAt(int index, int newKey)

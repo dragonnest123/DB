@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using AzotBase.Page;
 using AzotBase.Tree;
 using AzotBase.Utils;
@@ -155,25 +156,25 @@ public class TreeTest
     [Fact]
     public async Task Insert_Delete_Insert_ShouldRemainCorrect()
     {
-        for (int i = 0; i < 50; i++)
+        for (int i = 0; i < 500000; i++)
             await _tree.Insert(i, 1, 1);
 
-        for (int i = 0; i < 50; i++)
+        for (int i = 250000; i < 500000; i++)
             await _tree.Delete(i);
 
-        for (int i = 100; i < 150; i++)
+        for (int i = 250000; i < 500000; i++)
             await _tree.Insert(i, 1, 1);
 
         var result = await _tree.InOrder();
 
-        Assert.Equal(Enumerable.Range(100, 50), result);
+        Assert.Equal(Enumerable.Range(0, 500000), result);
     }
     
     [Fact]
     public async Task Concurrent_Insert_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 10000;
+        int keysPerThread = 50000;
 
         ConcurrentBag<int> expected = new ConcurrentBag<int>();
 
@@ -227,40 +228,54 @@ public class TreeTest
     }
     
     [Fact]
-    public async Task Concurrent_InsertDelete_ShouldResultInEmptyTree()
+    public async Task Concurrent_InsertAndDelete_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 300;
+        int keysPerThread = LeafPage.MaxKeys * 200;
+        int totalKeys = threadCount * keysPerThread;
+        
+        for (int i = totalKeys / 2; i < totalKeys; i++)
+            await _tree.Insert(i, 1, 1);
 
-        ConcurrentBag<int> expected = new ConcurrentBag<int>();
-
-        var tasks1 = Enumerable.Range(0, threadCount)
+        var insertTasks = Enumerable.Range(0, threadCount / 2)
             .Select(t => Task.Run(async () =>
             {
                 for (int i = 0; i < keysPerThread; i++)
                 {
                     int key = t * keysPerThread + i;
-                    expected.Add(key);
-                    await _tree.Insert(key, 1, 1);
-
+                    try
+                    {
+                        await _tree.Insert(key, 1, 1);
+                    }
+                    catch (Exception)
+                    {
+                        throw;
+                    }
                 }
             }));
 
-        var tasks2 = Enumerable.Range(0, threadCount)
+        var deleteTasks = Enumerable.Range(threadCount / 2, threadCount / 2)
             .Select(t => Task.Run(async () =>
             {
                 for (int i = 0; i < keysPerThread; i++)
                 {
                     int key = t * keysPerThread + i;
-                    await _tree.Delete(key);
+                    try
+                    {
+                        await _tree.Delete(key);
+                    }
+                    catch (Exception)
+                    {
+                        throw;
+                    }
                 }
             }));
-        
-        var tasks = tasks1.Concat(tasks2).ToArray();
-        
-        await Task.WhenAll(tasks);
+
+        await Task.WhenAll(insertTasks.Concat(deleteTasks));
 
         var keys = await _tree.InOrder();
-        Assert.Empty(keys);
+        
+        var expected = Enumerable.Range(0, totalKeys / 2).OrderBy(x => x);
+        Assert.Equal(expected, keys);
     }
 }
