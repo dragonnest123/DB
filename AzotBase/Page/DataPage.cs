@@ -24,21 +24,15 @@ public class DataPage : PageBase, IPage<DataPage>
 
     public ReadOnlySpan<byte> GetRecord(int slotIndex)
     {
-        EnterReadLock();
-        
         var firstByteSlot = slotIndex * Slot.SlotSize;
         var slot = StructSerializer.Deserialize<Slot>(_data.AsSpan()[firstByteSlot..(firstByteSlot + Slot.SlotSize)]);
         var record = _data.AsSpan()[slot.Offset..(slot.Offset + slot.Length)];
-        
-        ExitReadLock();
 
         return record;
     }
 
     public (int slotID, int writtenBytes) WriteRecord(byte[] record)
     {
-        EnterWriteLock(); 
-        
         var freeSpaceLength = Header.FreeSpaceEnd - Header.FreeSpaceStart + 1;
         
         if (Slot.SlotSize >= freeSpaceLength)
@@ -55,32 +49,22 @@ public class DataPage : PageBase, IPage<DataPage>
         Header.RecordCount++;
         IsDirty = 1;
         
-        ExitWriteLock();
-        
         return (slotId, byteToWrite);
     }
 
     public void DeleteRecord(int slotIndex)
     {   
-        EnterWriteLock();
-        
         var firstByteSlot = slotIndex * Slot.SlotSize;
         var slot = StructSerializer.Deserialize<Slot>(_data.AsSpan()[firstByteSlot..(firstByteSlot + Slot.SlotSize)]);
         WriteSlot(slot.Offset, 0);
-        
-        ExitWriteLock();
     }
 
     public override byte[] ToByteArray()
     {
-        EnterReadLock();
-        
         var result = new byte[SystemPage.PageSize];
 
         StructSerializer.Serialize(result, 0, ref Header);
         Array.Copy(_data, 0, result, DataPageHeader.LengthBytes, _data.Length);
-        
-        ExitReadLock();
         
         return result;
     }
@@ -94,7 +78,7 @@ public class DataPage : PageBase, IPage<DataPage>
         return new DataPage(header, bytes[DataPageHeader.LengthBytes..].ToArray());
     }
 
-    public static DataPage CreateEmpty(int id) => new DataPage(id);
+    public new static DataPage CreateEmpty(int id) => new DataPage(id);
 
     private void WriteSlot(int recordPos, int byteToWrite)
     {

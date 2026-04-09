@@ -2,7 +2,7 @@ using AzotBase.Page;
 
 namespace Test;
 
-public class PageManagerFactory
+public static class PageManagerFactory
 {
     public static PageManager Create()
     {

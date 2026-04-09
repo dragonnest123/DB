@@ -6,18 +6,18 @@ namespace AzotBase.Page;
 
 public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
 {
-    public new static readonly int MaxKeys = (SystemPage.PageSize - IndexPageHeader.LengthBytes - sizeof(int)) / (2 * sizeof(int));
+    public static readonly int MaxKeys = (SystemPage.PageSize - IndexPageHeader.LengthBytes - sizeof(int)) / (2 * sizeof(int));
     
     public override int Id => Header.Id;
-    public int[] ChildrenPageIds = new int[MaxKeys + 2]; //DISK
+    public readonly int[] ChildrenPageIds = new int[MaxKeys + 2]; //DISK
     
-    public IndexPage(int id) : base(new IndexPageHeader(id), MaxKeys + 1)
+    private IndexPage(int id) : base(new IndexPageHeader(id), MaxKeys + 1)
     {
         for (int i = 0; i < ChildrenPageIds.Length; i++)
             ChildrenPageIds[i] = -1;
     }
 
-    private IndexPage(IndexPageHeader header, int[] keys, int[] childrenPageIds) : base(header, keys, MaxKeys + 1)
+    private IndexPage(IndexPageHeader header, int[] keys, int[] childrenPageIds) : base(header, keys)
     {
         ChildrenPageIds = childrenPageIds;
     }
@@ -118,7 +118,7 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
         return result;
     }
     
-    public static IndexPage FromByteArray(Span<byte> bytes)
+    public new static IndexPage FromByteArray(Span<byte> bytes)
     {
         var header = StructSerializer.Deserialize<IndexPageHeader>(bytes[..IndexPageHeader.LengthBytes]);
         if (header.PageType != PageType.IndexPage)
@@ -144,5 +144,5 @@ public class IndexPage : BPlusTreePage<IndexPageHeader>, IPage<IndexPage>
         return new IndexPage(header, keys, childrenPageIds); 
     }
 
-    public static IndexPage CreateEmpty(int id) => new IndexPage(id);
+    public new static IndexPage CreateEmpty(int id) => new IndexPage(id);
 }

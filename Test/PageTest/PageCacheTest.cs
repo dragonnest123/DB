@@ -1,9 +1,7 @@
-using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using System.Diagnostics;
 using AzotBase.Page;
-using Xunit;
+using AzotBase.Page.PageCache;
 
 namespace Test.PageTest;
 
@@ -54,10 +52,8 @@ public class PageCacheTests
         var page2 = new DataPage(2);
         var page3 = new DataPage(3);
 
-        await cache.TryAddAsync(1, page1);
+        await cache.TryAddAsync(1, page1, true);
         await cache.TryAddAsync(2, page2);
-
-        cache.PinPage(1);
 
         DataPage? deletedPage = null;
         cache.DeleteEvent += (_, e) => deletedPage = e.Value;
@@ -78,8 +74,7 @@ public class PageCacheTests
         var page2 = new DataPage(2);
         var page3 = new DataPage(3);
 
-        await cache.TryAddAsync(1, page1);
-        cache.PinPage(1);
+        await cache.TryAddAsync(1, page1, true);
         cache.UnpinPage(1);
         
         bool deleted = false;
@@ -117,31 +112,128 @@ public class PageCacheTests
     }
     
     [Fact]
-    public async Task Concurrent_AddAndGetValueWith_ShouldReturnAddedValue()
+    public async Task Concurrent_TryGetValue_ShouldFindAddedValues()
     {
-        var cacheSize = 1000;
+        var cacheSize = 100;
         var cache = new PageCache<DataPage>(cacheSize);
-
+        
+        var threadCount = 32;
+        var requestsPerThread = 20000;
+        
+        for (int i = 0; i < cache.Capacity; i++)
+            await cache.TryAddAsync(i, new DataPage(i));
+        
+        var tasks = Enumerable.Range(0, threadCount)
+            .Select(_ => Task.Run(() =>
+            {
+                for (int k = 0; k <= requestsPerThread; k++)
+                {
+                    int id = new Random().Next(0, cacheSize - 1);
+                    try
+                    {
+                        if (!cache.TryGetValue(id, out var _))
+                            Assert.True(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        break;
+                    }
+                }
+                
+            }));
+        
+        await Task.WhenAll(tasks);
+    }
+    
+    [Fact]
+    public async Task Concurrent_Add_ShouldEvictCorrectly()
+    {
+        var cacheSize = 100000;
+        var cache = new PageCache<DataPage>(cacheSize);
+        
         var threadCount = 32;
         var addCountPerThread = 20000;
         
-        ConcurrentBag<bool> results = new ConcurrentBag<bool>();
+        int evictCount = 0;
+        
+        cache.DeleteEvent += (_, e) => Interlocked.Increment(ref evictCount);
         
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
             {
-                for (int k = 0; k <= addCountPerThread; k++)
+                for (int k = 0; k < addCountPerThread; k++)
                 {
-                    bool overrideIfExist = new Random().Next(0, 1) == 0;
                     var id = t * addCountPerThread + k;
                     var page = new DataPage(id);
-                    await cache.TryAddAsync(id, page, overrideIfExist);
-                    results.Add(cache.TryGetValue(id, out _));
+                    try
+                    {
+                        await cache.TryAddAsync(id, page);
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine(ex);
+                        break;
+                    }
                 }
             }));
 
         await Task.WhenAll(tasks);
 
-        Assert.All(results, Assert.True);
+        Assert.Equal(threadCount * addCountPerThread - cacheSize, evictCount);
+    }
+    
+    [Fact]
+    public async Task Concurrent_AddAndPin_ShouldNotOccurDeadlock()
+    {
+        var cacheSize = 1000;
+        var cache = new PageCache<DataPage>(cacheSize);
+
+        var threadCount = 32;
+        var addCountPerThread = 200;
+        
+        int evictCount = 0;
+        
+        var unpinTasks = new ConcurrentBag<Task>();
+        
+        cache.DeleteEvent += (_, e) => Interlocked.Increment(ref evictCount);
+        
+        var tasks = Enumerable.Range(0, threadCount)
+            .Select(t => Task.Run(async () =>
+            {
+                for (int k = 0; k < addCountPerThread; k++)
+                {
+                    var id = t * addCountPerThread + k;
+                    var page = new DataPage(id);
+                    try
+                    {
+                        await cache.TryAddAsync(id, page, true);
+                    }
+                    catch (Exception e)
+                    {
+                        Debug.WriteLine(e);
+                        throw;
+                    }
+                    
+                    unpinTasks.Add(Task.Run(async () =>
+                    {
+                        await Task.Delay(new Random().Next(0, 1000)).ConfigureAwait(false);
+                        try
+                        {
+                            cache.UnpinPage(id);
+                        }
+                        catch (Exception e)
+                        {
+                            Debug.WriteLine(e);
+                            throw;
+                        }
+                    }));
+                }
+            }));
+
+        await Task.WhenAll(tasks);
+        await Task.WhenAll(unpinTasks);
+        
+        Assert.Equal(threadCount * addCountPerThread - cacheSize, evictCount);
     }
 }

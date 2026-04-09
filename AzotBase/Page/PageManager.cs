@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using AzotBase.Page.PageCache;
 
 namespace AzotBase.Page;
 
@@ -11,7 +12,7 @@ public enum PageLockMode
 
 public class PageManager
 {
-    private readonly PageCache<PageBase> _cache = new PageCache<PageBase>(1000000);
+    private readonly PageCache<PageBase> _cache = new PageCache<PageBase>(1);
     private readonly FileStream _fileStream;
     private readonly ConcurrentQueue<int> _freePages = new ConcurrentQueue<int>();
     private int _nextPageId;
@@ -73,7 +74,7 @@ public class PageManager
         
         await LockPage(page, lockMode);
 
-        if (!await _cache.TryAddAsync(pageId, page, false))
+        if (!await _cache.TryAddAsync(pageId, page, true))
             page = await LoadPage<T>(pageId, lockMode);
 
         return page;
@@ -90,8 +91,6 @@ public class PageManager
 
         page.IsDirty = 0;
     }
-
-    public void PinPage(int pageId) => _cache.PinPage(pageId);
     
     public void UnpinPage(int pageId) => _cache.UnpinPage(pageId);
     
@@ -115,7 +114,7 @@ public class PageManager
                 break;
             case PageLockMode.NoLock:
                 break;
-            default: throw new ArgumentOutOfRangeException();
+            default: throw new ArgumentOutOfRangeException(nameof(lockMode));
         }
     }
 }

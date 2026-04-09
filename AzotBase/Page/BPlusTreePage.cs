@@ -6,21 +6,18 @@ namespace AzotBase.Page;
 public abstract class BPlusTreePage<THeader> : PageBase where THeader : unmanaged, ITreePageHeader
 {
     public THeader Header;
-    public int[] Keys;
-    public int MaxKeys;
+    public readonly int[] Keys;
 
-    protected BPlusTreePage(THeader header, int maxKeys)
+    protected BPlusTreePage(THeader header, int maxKeys) : base(true)
     {
         Header = header;
-        MaxKeys = maxKeys;
         Keys = new int[maxKeys];
     }
     
-    protected BPlusTreePage(THeader header, int[] keys, int maxKeys)
+    protected BPlusTreePage(THeader header, int[] keys) : base(true)
     {
         Header = header;
         Keys = keys;
-        MaxKeys = maxKeys;
     }
     
     public int FindKey(int key)

@@ -1,6 +1,5 @@
 using System.Diagnostics;
 using AzotBase.Page;
-using AzotBase.Utils;
 
 namespace AzotBase.Tree;
 
@@ -536,7 +535,6 @@ public class BPlusTree
 
     private void PinPage(int id, List<int> pinned)
     {
-        _pageManager.PinPage(id);
         pinned.Add(id);
     }
 

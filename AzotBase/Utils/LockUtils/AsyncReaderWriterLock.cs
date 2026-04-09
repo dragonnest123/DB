@@ -1,9 +1,6 @@
-using System.Collections.Concurrent;
-using System.Diagnostics;
+namespace AzotBase.Utils.LockUtils;
 
-namespace AzotBase.Utils;
-
-public class AsyncReaderWriterLock
+public class AsyncReaderWriterLock : IReaderWriterLock
 {
     private readonly SemaphoreSlim _lock = new SemaphoreSlim(1, 1);
     private readonly Lazy<SemaphoreSlim> _upgradeLock = new Lazy<SemaphoreSlim>(() => new SemaphoreSlim(0));
@@ -17,7 +14,7 @@ public class AsyncReaderWriterLock
     private bool _writerActive;
     private bool _upgradeActive;
     
-    public async Task EnterReadLock(int milliSecondsTimeout = Timeout.Infinite)
+    public async ValueTask EnterReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync(milliSecondsTimeout);
 
@@ -41,7 +38,7 @@ public class AsyncReaderWriterLock
         }
     }
 
-    public async Task<bool> TryUpgradeReadLock(int milliSecondsTimeout = Timeout.Infinite)
+    public async ValueTask<bool> TryUpgradeReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync(milliSecondsTimeout);
         
@@ -80,7 +77,7 @@ public class AsyncReaderWriterLock
         return true;
     }
 
-    public async Task ExitReadLock(int milliSecondsTimeout = Timeout.Infinite)
+    public async ValueTask ExitReadLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync();
 
@@ -114,7 +111,7 @@ public class AsyncReaderWriterLock
         _lock.Release();
     }
 
-    public async Task EnterWriteLock(int milliSecondsTimeout = Timeout.Infinite)
+    public async ValueTask EnterWriteLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync(milliSecondsTimeout);
 
@@ -138,7 +135,7 @@ public class AsyncReaderWriterLock
         }
     }
 
-    public async Task ExitWriteLock(int milliSecondsTimeout = Timeout.Infinite)
+    public async ValueTask ExitWriteLock(int milliSecondsTimeout = Timeout.Infinite)
     {
         await _lock.WaitAsync();
         

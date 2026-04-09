@@ -9,7 +9,7 @@ public class SystemPage : PageBase, IPage<SystemPage>
     
     public override int Id => Header.Id;
     public SystemPageHeader Header { get; set; }
-    public Queue<int> FreePages = new Queue<int>(); //RAM
+    public Queue<int> FreePages = new Queue<int>();
 
     public override byte[] ToByteArray()
     {

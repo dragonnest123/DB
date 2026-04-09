@@ -6,17 +6,17 @@ namespace AzotBase.Page;
 
 public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
 {
-    public new static readonly int MaxKeys = (SystemPage.PageSize - LeafPageHeader.LengthBytes - sizeof(int)) / (3 * sizeof(int));
+    public static readonly int MaxKeys = (SystemPage.PageSize - LeafPageHeader.LengthBytes - sizeof(int)) / (3 * sizeof(int));
     
     public override int Id => Header.Id;
-    public (int PageId, int SlotId)[] Values; //DISK
+    public readonly (int PageId, int SlotId)[] Values; //DISK
     
     public LeafPage(int id) : base(new LeafPageHeader(id), MaxKeys)
     {
         Values = new (int PageId, int SlotId)[MaxKeys];
     }
     
-    private LeafPage(LeafPageHeader header, int[] keys,  (int PageId, int SlotId)[] values) : base(header, keys, MaxKeys)
+    private LeafPage(LeafPageHeader header, int[] keys,  (int PageId, int SlotId)[] values) : base(header, keys)
     {
         Values = values;
     }
@@ -128,7 +128,7 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         return result;
     }
     
-    public static LeafPage FromByteArray(Span<byte> bytes)
+    public new static LeafPage FromByteArray(Span<byte> bytes)
     {
         var header = StructSerializer.Deserialize<LeafPageHeader>(bytes[..LeafPageHeader.LengthBytes]);
         if (header.PageType != PageType.LeafPage)
@@ -154,5 +154,5 @@ public class LeafPage : BPlusTreePage<LeafPageHeader>, IPage<LeafPage>
         return new LeafPage(header, keys, values); 
     }
 
-    public static LeafPage CreateEmpty(int id) => new LeafPage(id);
+    public new static LeafPage CreateEmpty(int id) => new LeafPage(id);
 }

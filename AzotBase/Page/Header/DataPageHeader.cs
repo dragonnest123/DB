@@ -5,7 +5,7 @@ namespace AzotBase.Page.Header;
 [StructLayout(LayoutKind.Sequential, Pack = 1)]
 public struct DataPageHeader : IPageHeader
 {
-    public static readonly ushort LengthBytes = (ushort)Marshal.SizeOf<DataPageHeader>(); //RAM
+    public static readonly ushort LengthBytes = (ushort)Marshal.SizeOf<DataPageHeader>();
     
     public int Id { get; set; }
     public PageType PageType { get; set; }

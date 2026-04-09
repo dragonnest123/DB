@@ -1,8 +1,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
-using AzotBase.Page;
 
-namespace AzotBase.Utils;
+namespace AzotBase.Utils.LockUtils;
 
 public static class LockTracker
 {
@@ -13,7 +12,7 @@ public static class LockTracker
         Upgrade
     }
     
-    public struct LockInfo
+    private struct LockInfo
     {
         public int ThreadId;
         public LockOperation LockOp;

@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using AzotBase.Page.Header;
 using AzotBase.Utils;
+using AzotBase.Utils.LockUtils;
 
 namespace AzotBase.Page;
 
@@ -8,31 +9,39 @@ public abstract class PageBase : IPage<PageBase>
 {
     public abstract int Id { get; }
     public byte IsDirty { get; set; }
-    private readonly AsyncReaderWriterLock _pageLock = new AsyncReaderWriterLock();
+    private readonly IReaderWriterLock _pageLock;
+
+    protected PageBase(bool asyncLock = false)
+    {
+        if (asyncLock)
+            _pageLock = new AsyncReaderWriterLock();
+        else
+            _pageLock = new ReaderWriterLockAdapter();
+    }
     
     public abstract byte[] ToByteArray();
     
-    public async Task EnterReadLock(int millisecondsTimeout = Timeout.Infinite)
+    public async ValueTask EnterReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
         await _pageLock.EnterReadLock(millisecondsTimeout);
     }
 
-    public async Task ExitReadLock(int millisecondsTimeout = Timeout.Infinite)
+    public async ValueTask ExitReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
         await _pageLock.ExitReadLock(millisecondsTimeout);
     }
 
-    public async Task EnterWriteLock(int millisecondsTimeout = Timeout.Infinite)
+    public async ValueTask EnterWriteLock(int millisecondsTimeout = Timeout.Infinite)
     {
         await _pageLock.EnterWriteLock(millisecondsTimeout);
     }
 
-    public async Task ExitWriteLock(int millisecondsTimeout = Timeout.Infinite)
+    public async ValueTask ExitWriteLock(int millisecondsTimeout = Timeout.Infinite)
     {
         await _pageLock.ExitWriteLock(millisecondsTimeout);
     }
 
-    public async Task<bool> TryUpgradeReadLock(int millisecondsTimeout = Timeout.Infinite)
+    public async ValueTask<bool> TryUpgradeReadLock(int millisecondsTimeout = Timeout.Infinite)
     {
         return await _pageLock.TryUpgradeReadLock(millisecondsTimeout);
     }

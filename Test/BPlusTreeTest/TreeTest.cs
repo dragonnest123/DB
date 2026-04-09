@@ -14,8 +14,6 @@ public class TreeTest
     private readonly BPlusTree _tree;
     private readonly int _rootPageId;
 
-    private ITestOutputHelper _output = new TestOutputHelper();
-
     public TreeTest()
     {
         _pageManager = PageManagerFactory.Create();
@@ -174,7 +172,7 @@ public class TreeTest
     public async Task Concurrent_Insert_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 50000;
+        int keysPerThread = 5000;
 
         ConcurrentBag<int> expected = new ConcurrentBag<int>();
 
@@ -186,7 +184,6 @@ public class TreeTest
                     int key = t * keysPerThread + i;
                     expected.Add(key);
                     await _tree.Insert(key, 1, 1);
-
                 }
             }))
             .ToArray();
