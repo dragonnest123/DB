@@ -1,4 +1,6 @@
-namespace AzotBase.Page.PageCache;
+using AzotBase.Page;
+
+namespace AzotBase.Utils.Collections;
 
 public class CacheList<V> where V : PageBase
 {
