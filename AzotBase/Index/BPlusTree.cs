@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using AzotBase.Page;
 
-namespace AzotBase.Tree;
+namespace AzotBase.Index;
 
 public class BPlusTree
 {
@@ -21,37 +21,34 @@ public class BPlusTree
         _rootPageId = rootPageId;
     }
     
+    public BPlusTree(PageManager pageManager)
+    {
+        _pageManager = pageManager;
+    }
+    
     public async Task Insert(int key, int pageId, int slotId)
     {
         var path = new Stack<int>();
-        List<int> pinned = new List<int>();
         
         var leaf = await FindLeafPage(key, OperationType.Insert, path);
-        PinPage(leaf.Header.Id, pinned);
-        
         leaf.InsertKey(key, pageId, slotId);
-        
-        if (leaf.Header.KeyCount == LeafPage.MaxKeys)
-            await SplitLeaf(leaf, path, pinned);
-        else
-            await leaf.ExitWriteLock();
 
-        UnpinPinnedPages(pinned);
+        if (leaf.Header.KeyCount == LeafPage.MaxKeys)
+            await SplitLeaf(leaf, path);
+        else
+            await FreePage(leaf);
     }
      
     public async Task Delete(int key)
     {
         var path = new Stack<int>();
-        List<int> pinned = new List<int>();
     
         var leaf = await FindLeafPage(key, OperationType.Delete, path);
-        PinPage(leaf.Header.Id, pinned);
 
         if (leaf.FindKey(key) < 0)
         {
-            await leaf.ExitWriteLock();
+            await FreePage(leaf);
             await ClearPath(path);
-            UnpinPinnedPages(pinned);
             return;
         }
 
@@ -59,13 +56,11 @@ public class BPlusTree
         
         if (leaf.Header.Id == _rootPageId || leaf.Header.KeyCount >= LeafPage.MaxKeys / 2)
         {
-            await leaf.ExitWriteLock();
-            UnpinPinnedPages(pinned);
+            await FreePage(leaf);
             return;
         }
 
-        await BalanceAfterDelete(leaf, path, pinned);
-        UnpinPinnedPages(pinned);
+        await BalanceAfterDelete(leaf, path);
     }
 
     public async Task<(int pageId, int slotId)?> Find(int key)
@@ -74,7 +69,7 @@ public class BPlusTree
         while (true)
         {
             int rootId = _rootPageId;
-            current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.ReadLock);
+            current = await _pageManager.LoadPage<PageBase>(rootId, false, PageLockMode.ReadLock);
         
             if (_rootPageId == rootId)
                 break;
@@ -86,7 +81,7 @@ public class BPlusTree
         {
             int childIndex = BinarySearchGreaterIndex(key, index.Keys, index.Header.KeyCount);
             var childId = index.ChildrenPageIds[childIndex];
-            var child = await _pageManager.LoadPage<PageBase>(childId, PageLockMode.ReadLock);
+            var child = await _pageManager.LoadPage<PageBase>(childId, false, PageLockMode.ReadLock);
             
             await index.ExitReadLock();
 
@@ -102,39 +97,38 @@ public class BPlusTree
         return result;
     }
      
-    private async Task BalanceAfterDelete(LeafPage leafPage, Stack<int> path, List<int> pinned)
+    private async Task BalanceAfterDelete(LeafPage leafPage, Stack<int> path)
     {
         PageBase page = leafPage;
 
         while (path.Count > 0)
         {
             int parentId = path.Pop();
-            var parent = await _pageManager.LoadPage<IndexPage>(parentId);
-            PinPage(parentId, pinned);
+            var parent = await _pageManager.LoadPage<IndexPage>(parentId, false);
             
             if (page is LeafPage leaf)
             {
-                if (await TryRedistributeLeaf(parent, leaf, pinned))
+                if (await TryRedistributeLeaf(parent, leaf))
                 {
-                    await leaf.ExitWriteLock();
-                    await parent.ExitWriteLock();
+                    await FreePage(leaf);
+                    await FreePage(parent);
                     await ClearPath(path);
                     return;
                 }
 
-                await MergeLeaf(parent, leaf, pinned);
+                await MergeLeaf(parent, leaf);
             }
             else if (page is IndexPage index)
             {
-                if (await TryRedistributeIndex(parent, index, pinned))
+                if (await TryRedistributeIndex(parent, index))
                 {
-                    await index.ExitWriteLock();
-                    await parent.ExitWriteLock();
+                    await FreePage(index);
+                    await FreePage(parent);
                     await ClearPath(path);
                     return;
                 }
 
-                await MergeIndex(parent, index, pinned);
+                await MergeIndex(parent, index);
             }
  
             page = parent;
@@ -142,15 +136,15 @@ public class BPlusTree
             if (parentId == _rootPageId && parent.Header.KeyCount == 0)
             {
                 Interlocked.Exchange(ref _rootPageId, parent.ChildrenPageIds[0]);
-                await parent.ExitWriteLock();
+                await FreePage(parent);
                 return;
             }
         }
-        
-        await page.ExitWriteLock();
+
+        await FreePage(page);
     }
      
-    private async Task<bool> TryRedistributeLeaf(IndexPage parent, LeafPage page, List<int> pinned)
+    private async Task<bool> TryRedistributeLeaf(IndexPage parent, LeafPage page)
     {
         int index = Array.IndexOf(parent.ChildrenPageIds, page.Header.Id, 0, parent.Header.KeyCount + 1);
 
@@ -159,8 +153,7 @@ public class BPlusTree
         
         if (leftId != -1)
         {
-            LeafPage left = await _pageManager.LoadPage<LeafPage>(leftId, PageLockMode.WriteLock);
-            PinPage(left.Header.Id, pinned);
+            LeafPage left = await _pageManager.LoadPage<LeafPage>(leftId, true, PageLockMode.WriteLock);
             
             if (left.Header.KeyCount > LeafPage.MaxKeys / 2)
             {
@@ -174,18 +167,17 @@ public class BPlusTree
                 left.Header.KeyCount--;
                 left.IsDirty = 1;
                 
-                await left.ExitWriteLock();
+                await FreePage(left);
                 
                 return true;
             }
             
-            await left.ExitWriteLock();
+            await FreePage(left);
         }
         
         if (rightId != -1)
         {
-            LeafPage right = await _pageManager.LoadPage<LeafPage>(rightId, PageLockMode.WriteLock);
-            PinPage(right.Header.Id, pinned);
+            LeafPage right = await _pageManager.LoadPage<LeafPage>(rightId, true, PageLockMode.WriteLock);
 
             if (right.Header.KeyCount > LeafPage.MaxKeys / 2)
             {
@@ -196,18 +188,18 @@ public class BPlusTree
                 right.DeleteKeyAt(0);
                 parent.ReplaceKeyAt(index, right.Keys[0]);
                 
-                await right.ExitWriteLock();
+                await FreePage(right);
                 
                 return true;
             }
             
-            await right.ExitWriteLock();
+            await FreePage(right);
         }
         
         return false;
     }
     
-    private async Task<bool> TryRedistributeIndex(IndexPage parent, IndexPage page, List<int> pinned)
+    private async Task<bool> TryRedistributeIndex(IndexPage parent, IndexPage page)
     {
         int index = Array.IndexOf(parent.ChildrenPageIds, page.Header.Id, 0, parent.Header.KeyCount + 1);
 
@@ -218,8 +210,7 @@ public class BPlusTree
         
         if (leftId != -1)
         {
-            IndexPage left = await _pageManager.LoadPage<IndexPage>(leftId, PageLockMode.WriteLock);
-            PinPage(left.Header.Id, pinned);
+            IndexPage left = await _pageManager.LoadPage<IndexPage>(leftId, true, PageLockMode.WriteLock);
             
             if (left.Header.KeyCount > IndexPage.MaxKeys / 2)
             {
@@ -238,18 +229,17 @@ public class BPlusTree
                 left.Header.KeyCount--;
                 left.IsDirty = 1;
                 
-                await left.ExitWriteLock();
+                await FreePage(left);
                 
                 return true;
             }
             
-            await left.ExitWriteLock();
+            await FreePage(left);
         }
         
         if (rightId != -1)
         {
-            IndexPage right = await _pageManager.LoadPage<IndexPage>(rightId, PageLockMode.WriteLock);
-            PinPage(right.Header.Id, pinned);
+            IndexPage right = await _pageManager.LoadPage<IndexPage>(rightId, true, PageLockMode.WriteLock);
             
             if (right.Header.KeyCount > minKeys)
             {
@@ -268,18 +258,18 @@ public class BPlusTree
                 right.Header.KeyCount--;
                 right.IsDirty = 1;
                 
-               await right.ExitWriteLock();
+                await FreePage(right);
 
                return true;
             }
             
-            await right.ExitWriteLock();
+            await FreePage(right);
         }
         
         return false;
     }
     
-    private async Task MergeLeaf(IndexPage parent, LeafPage page, List<int> pinned)
+    private async Task MergeLeaf(IndexPage parent, LeafPage page)
     {
         int index = Array.IndexOf(parent.ChildrenPageIds, page.Header.Id, 0, parent.Header.KeyCount + 1);
 
@@ -291,17 +281,14 @@ public class BPlusTree
         if (index == leftIndex)
         {
             left = page;
-            right = await _pageManager.LoadPage<LeafPage>(parent.ChildrenPageIds[rightIndex], PageLockMode.WriteLock);
+            right = await _pageManager.LoadPage<LeafPage>(parent.ChildrenPageIds[rightIndex], true, PageLockMode.WriteLock);
         }
         else
         {
-            left = await _pageManager.LoadPage<LeafPage>(parent.ChildrenPageIds[leftIndex], PageLockMode.WriteLock);
+            left = await _pageManager.LoadPage<LeafPage>(parent.ChildrenPageIds[leftIndex], true, PageLockMode.WriteLock);
             right = page;
         }
         
-        PinPage(left.Header.Id, pinned);
-        PinPage(right.Header.Id, pinned);
-
         left.InsertRangeAt(
             left.Header.KeyCount, 
             right.Keys.AsSpan()[..right.Header.KeyCount], 
@@ -309,11 +296,11 @@ public class BPlusTree
     
         parent.DeleteKeyAt(leftIndex);
         
-        await left.ExitWriteLock();
-        await right.ExitWriteLock();
+        await FreePage(left);
+        await FreePage(right);
     }
     
-    private async Task MergeIndex(IndexPage parent, IndexPage page, List<int> pinned)
+    private async Task MergeIndex(IndexPage parent, IndexPage page)
     {
         int index = Array.IndexOf(parent.ChildrenPageIds, page.Header.Id, 0, parent.Header.KeyCount + 1);
 
@@ -325,17 +312,14 @@ public class BPlusTree
         if (index == leftIndex)
         {
             left = page;
-            right = await _pageManager.LoadPage<IndexPage>(parent.ChildrenPageIds[rightIndex], PageLockMode.WriteLock);
+            right = await _pageManager.LoadPage<IndexPage>(parent.ChildrenPageIds[rightIndex], true, PageLockMode.WriteLock);
         }
         else
         {
-            left = await _pageManager.LoadPage<IndexPage>(parent.ChildrenPageIds[leftIndex], PageLockMode.WriteLock);
+            left = await _pageManager.LoadPage<IndexPage>(parent.ChildrenPageIds[leftIndex], true, PageLockMode.WriteLock);
             right = page;
         }
         
-        PinPage(left.Header.Id, pinned);
-        PinPage(right.Header.Id, pinned);
-
         int separator = parent.Keys[leftIndex];
         
         left.InsertKeyAt(left.Header.KeyCount, separator, right.ChildrenPageIds[0]);
@@ -345,14 +329,13 @@ public class BPlusTree
             right.ChildrenPageIds.AsSpan()[..(right.Header.KeyCount + 1)]);
         parent.DeleteKeyAt(leftIndex);
         
-        await left.ExitWriteLock();
-        await right.ExitWriteLock();
+        await FreePage(left);
+        await FreePage(right);
     }
     
-    private async Task SplitLeaf(LeafPage leaf, Stack<int> path, List<int> pinned)
+    private async Task SplitLeaf(LeafPage leaf, Stack<int> path)
     {
-        LeafPage rightLeaf = await _pageManager.AllocatePage<LeafPage>(PageLockMode.WriteLock);
-        PinPage(rightLeaf.Header.Id, pinned);
+        LeafPage rightLeaf = await _pageManager.AllocatePage<LeafPage>(true, PageLockMode.WriteLock);
 
         int mid = leaf.Header.KeyCount / 2;
         int rightCount = leaf.Header.KeyCount - mid;
@@ -367,13 +350,12 @@ public class BPlusTree
 
         int parentKey = rightLeaf.Keys[0];
         
-        await InsertIntoParent(path, parentKey, rightLeaf.Header.Id, leaf, rightLeaf, pinned);
+        await InsertIntoParent(path, parentKey, rightLeaf.Header.Id, leaf, rightLeaf);
     }
     
-    private async Task SplitIndex(IndexPage index, Stack<int> path, List<int> pinned)
+    private async Task SplitIndex(IndexPage index, Stack<int> path)
     {
-        IndexPage rightIndex = await _pageManager.AllocatePage<IndexPage>(PageLockMode.WriteLock);
-        PinPage(rightIndex.Header.Id, pinned);
+        IndexPage rightIndex = await _pageManager.AllocatePage<IndexPage>(true, PageLockMode.WriteLock);
 
         int mid = index.Header.KeyCount / 2;
         int promoteKey = index.Keys[mid];
@@ -387,34 +369,33 @@ public class BPlusTree
         index.Header.KeyCount = mid;
         index.IsDirty = 1;
         
-        await InsertIntoParent(path, promoteKey, rightIndex.Header.Id, index, rightIndex, pinned);
+        await InsertIntoParent(path, promoteKey, rightIndex.Header.Id, index, rightIndex);
     }
      
-    private async Task InsertIntoParent(Stack<int> path, int key, int rightId, PageBase left, PageBase right, List<int> pinned)
+    private async Task InsertIntoParent(Stack<int> path, int key, int rightId, PageBase left, PageBase right)
     {
         if (path.Count == 0)
         {
-            await CreateNewRoot(key, rightId, pinned);
+            await CreateNewRoot(key, rightId);
             
-            await left.ExitWriteLock();
-            await right.ExitWriteLock();
+            await FreePage(left);
+            await FreePage(right);
             
             return;
         }
 
         int parentId = path.Pop();
-        var parent = await _pageManager.LoadPage<IndexPage>(parentId);
-        PinPage(parentId, pinned);
+        var parent = await _pageManager.LoadPage<IndexPage>(parentId, false);
 
         parent.InsertKey(key, rightId);
         
-        await left.ExitWriteLock();
-        await right.ExitWriteLock();
-        
+        await FreePage(left);
+        await FreePage(right);
+
         if (parent.Header.KeyCount >= IndexPage.MaxKeys)
-            await SplitIndex(parent, path, pinned);
+            await SplitIndex(parent, path);
         else
-            await parent.ExitWriteLock();
+            await FreePage(parent);
     }
     
     private async Task<LeafPage> FindLeafPage(int key, OperationType op, Stack<int> path)
@@ -432,11 +413,11 @@ public class BPlusTree
     private async Task<LeafPage?> TryFindLeafPage(int key, OperationType op, Stack<int> path)
     {
         var rootId = _rootPageId;
-        PageBase current = await _pageManager.LoadPage<PageBase>(rootId, PageLockMode.WriteLock);
+        PageBase current = await _pageManager.LoadPage<PageBase>(rootId, true, PageLockMode.WriteLock);
 
         if (rootId != _rootPageId)
         {
-            await current.ExitWriteLock();
+            await FreePage(current);
             return null;
         }
 
@@ -444,26 +425,25 @@ public class BPlusTree
         {
             int childIndex = BinarySearchGreaterIndex(key, index.Keys, index.Header.KeyCount);
             var childId = index.ChildrenPageIds[childIndex];
-            var child = await _pageManager.LoadPage<PageBase>(childId, PageLockMode.WriteLock);
+            var child = await _pageManager.LoadPage<PageBase>(childId, true, PageLockMode.WriteLock);
 
             if (IsSafe(child, op))
             {
-                await index.ExitWriteLock();
+                await FreePage(index);
                 await ClearPath(path);
             }
             else
                 path.Push(index.Header.Id);
-
+            
             current = child;
         }
 
         return (LeafPage)current;
     }
     
-    private async Task CreateNewRoot(int key, int rightId, List<int> pinned)
+    private async Task CreateNewRoot(int key, int rightId)
     {
-        IndexPage root = await _pageManager.AllocatePage<IndexPage>(PageLockMode.WriteLock);
-        PinPage(root.Header.Id, pinned);
+        IndexPage root = await _pageManager.AllocatePage<IndexPage>(true, PageLockMode.WriteLock);
             
         root.Keys[0] = key;
         root.ChildrenPageIds[0] = _rootPageId;
@@ -473,7 +453,7 @@ public class BPlusTree
             
         Interlocked.Exchange(ref _rootPageId, root.Header.Id);
         
-        await root.ExitWriteLock();
+        await FreePage(root);
     }
 
     private static bool IsSafe(PageBase page, OperationType op)
@@ -511,8 +491,9 @@ public class BPlusTree
     {
         while (path.Count > 0)
         {
-            var page = await _pageManager.LoadPage<PageBase>(path.Pop());
-            await page.ExitWriteLock();
+            var id = path.Pop();
+            var page = await _pageManager.LoadPage<PageBase>(id, false);
+            await FreePage(page);
         }
     }
     
@@ -520,7 +501,6 @@ public class BPlusTree
     {
         int left = 0;
         int right = keysCount - 1;
-        
         
         while (left <= right)
         {
@@ -533,15 +513,10 @@ public class BPlusTree
         return left;
     }
 
-    private void PinPage(int id, List<int> pinned)
+    private async Task FreePage(PageBase page)
     {
-        pinned.Add(id);
-    }
-
-    private void UnpinPinnedPages(List<int> pinned)
-    {
-        foreach (int id in pinned)
-            _pageManager.UnpinPage(id);
+        await page.ExitWriteLock();
+        _pageManager.UnpinPage(page.Id);
     }
     
     public async Task<int[]> InOrder()
@@ -563,6 +538,7 @@ public class BPlusTree
         return result.ToArray();
     } 
     
+    //not thread safe
     private async Task InOrderTraversal(int pageId, List<int> result, HashSet<int> visited)
     {
         if (!visited.Add(pageId))
@@ -571,7 +547,7 @@ public class BPlusTree
         var pageType = await _pageManager.ReadPageType(pageId);
         if (pageType == PageType.LeafPage)
         {
-            LeafPage page = await _pageManager.LoadPage<LeafPage>(pageId, PageLockMode.WriteLock);
+            LeafPage page = await _pageManager.LoadPage<LeafPage>(pageId, false, PageLockMode.WriteLock);
             var keys = page.Keys.Take(page.Header.KeyCount).ToArray();
         
             for (int i = 1; i < keys.Length; i++)
@@ -583,7 +559,7 @@ public class BPlusTree
             return;
         }
     
-        var indexPage = await _pageManager.LoadPage<IndexPage>(pageId, PageLockMode.WriteLock);
+        var indexPage = await _pageManager.LoadPage<IndexPage>(pageId, false, PageLockMode.WriteLock);
         var childCount = indexPage.Header.KeyCount + 1;
         
         for (int i = 1; i < indexPage.Header.KeyCount; i++)

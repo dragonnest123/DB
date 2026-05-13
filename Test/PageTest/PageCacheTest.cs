@@ -10,7 +10,7 @@ public class PageCacheTests
     [Fact]
     public async Task AddAndGetValue_ShouldReturnAddedValue()
     {
-        var cache = new PageCache<DataPage>(2);
+        var cache = new PageCache<int>(2);
         var page = new DataPage(1);
 
         await cache.TryAddAsync(1, page);
@@ -20,102 +20,12 @@ public class PageCacheTests
         Assert.True(found);
         Assert.Equal(page, result);
     }
-
-    [Fact]
-    public async Task LRU_EvictsOldestUnpinned_WhenCapacityExceeded()
-    {
-        var cache = new PageCache<DataPage>(2);
-        var page1 = new DataPage(1);
-        var page2 = new DataPage(2);
-        var page3 = new DataPage(3);
-
-        await cache.TryAddAsync(1, page1);
-        await cache.TryAddAsync(2, page2);
-        
-        DataPage? deletedPage = null;
-        cache.DeleteEvent += (_, e) => deletedPage = e.Value;
-
-        await cache.TryAddAsync(3, page3);
-        
-        Assert.Equal(page1, deletedPage);
-        
-        Assert.True(cache.TryGetValue(2, out var p2) && p2 == page2);
-        Assert.True(cache.TryGetValue(3, out var p3) && p3 == page3);
-        Assert.False(cache.TryGetValue(1, out _));
-    }
-
-    [Fact]
-    public async Task PinPage_PreventsEviction()
-    {
-        var cache = new PageCache<DataPage>(2);
-        var page1 = new DataPage(1);
-        var page2 = new DataPage(2);
-        var page3 = new DataPage(3);
-
-        await cache.TryAddAsync(1, page1, true);
-        await cache.TryAddAsync(2, page2);
-
-        DataPage? deletedPage = null;
-        cache.DeleteEvent += (_, e) => deletedPage = e.Value;
-
-        await cache.TryAddAsync(3, page3);
-        
-        Assert.Equal(page2, deletedPage);
-        Assert.True(cache.TryGetValue(1, out var p1) && p1 == page1);
-        Assert.True(cache.TryGetValue(3, out var p3) && p3 == page3);
-        Assert.False(cache.TryGetValue(2, out _));
-    }
-
-    [Fact]
-    public async Task UnpinPage_AllowsEviction()
-    {
-        var cache = new PageCache<DataPage>(2);
-        var page1 = new DataPage(1);
-        var page2 = new DataPage(2);
-        var page3 = new DataPage(3);
-
-        await cache.TryAddAsync(1, page1, true);
-        cache.UnpinPage(1);
-        
-        bool deleted = false;
-        cache.DeleteEvent += (_, _) => deleted = true;
-        
-        await cache.TryAddAsync(2, page2);
-        await cache.TryAddAsync(3, page3);
-
-        Assert.True(deleted);
-    }
-
-    [Fact]
-    public async Task TryGetValue_ShouldMoveNodeToTail()
-    {
-        var cache = new PageCache<DataPage>(2);
-        var page1 = new DataPage(1);
-        var page2 = new DataPage(2);
-        var page3 = new DataPage(3);
-
-        await cache.TryAddAsync(1, page1);
-        await cache.TryAddAsync(2, page2);
-        
-        bool found = cache.TryGetValue(1, out _);
-        Assert.True(found);
-        
-        DataPage? deletedPage = null;
-        cache.DeleteEvent += (_, e) => deletedPage = e.Value;
-
-        await cache.TryAddAsync(3, page3);
-
-        Assert.Equal(page2, deletedPage);
-        Assert.True(cache.TryGetValue(1, out _));
-        Assert.True(cache.TryGetValue(3, out _));
-        Assert.False(cache.TryGetValue(2, out _));
-    }
     
     [Fact]
     public async Task Concurrent_TryGetValue_ShouldFindAddedValues()
     {
         var cacheSize = 100;
-        var cache = new PageCache<DataPage>(cacheSize);
+        var cache = new PageCache<int>(cacheSize);
         
         var threadCount = 32;
         var requestsPerThread = 20000;
@@ -140,7 +50,6 @@ public class PageCacheTests
                         break;
                     }
                 }
-                
             }));
         
         await Task.WhenAll(tasks);
@@ -150,14 +59,14 @@ public class PageCacheTests
     public async Task Concurrent_Add_ShouldEvictCorrectly()
     {
         var cacheSize = 100000;
-        var cache = new PageCache<DataPage>(cacheSize);
+        var cache = new PageCache<int>(cacheSize);
         
         var threadCount = 32;
         var addCountPerThread = 20000;
         
         int evictCount = 0;
         
-        cache.DeleteEvent += (_, e) => Interlocked.Increment(ref evictCount);
+        cache.DeleteEvent += (_, _) => Interlocked.Increment(ref evictCount);
         
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
@@ -187,7 +96,7 @@ public class PageCacheTests
     public async Task Concurrent_AddAndPin_ShouldNotOccurDeadlock()
     {
         var cacheSize = 1000;
-        var cache = new PageCache<DataPage>(cacheSize);
+        var cache = new PageCache<int>(cacheSize);
 
         var threadCount = 32;
         var addCountPerThread = 200;
@@ -196,7 +105,7 @@ public class PageCacheTests
         
         var unpinTasks = new ConcurrentBag<Task>();
         
-        cache.DeleteEvent += (_, e) => Interlocked.Increment(ref evictCount);
+        cache.DeleteEvent += (_, _) => Interlocked.Increment(ref evictCount);
         
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>

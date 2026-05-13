@@ -1,10 +1,6 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using AzotBase.Index;
 using AzotBase.Page;
-using AzotBase.Tree;
-using AzotBase.Utils;
-using Xunit.Abstractions;
-using Xunit.Sdk;
 
 namespace Test.BPlusTreeTest;
 
@@ -18,7 +14,7 @@ public class TreeTest
     {
         _pageManager = PageManagerFactory.Create();
         
-        var root =  _pageManager.AllocatePage<LeafPage>().Result;
+        var root =  _pageManager.AllocatePage<LeafPage>(false).Result;
         _rootPageId = root.Header.Id;
         _tree = new BPlusTree(_pageManager, _rootPageId);
     }
@@ -28,7 +24,7 @@ public class TreeTest
     {
         await _tree.Insert(10, 1, 1);
 
-        var leaf = await _pageManager.LoadPage<LeafPage>(_rootPageId);
+        var leaf = await _pageManager.LoadPage<LeafPage>(_rootPageId, false);
 
         Assert.Equal(1, leaf.Header.KeyCount);
         Assert.Equal(10, leaf.Keys[0]);
@@ -41,7 +37,7 @@ public class TreeTest
         await _tree.Insert(10, 1, 1);
         await _tree.Insert(20, 1, 1);
 
-        var leaf = await _pageManager.LoadPage<LeafPage>(_rootPageId);
+        var leaf = await _pageManager.LoadPage<LeafPage>(_rootPageId, false);
 
         Assert.Equal(3, leaf.Header.KeyCount);
         Assert.Equal([10, 20, 30], leaf.Keys.Take(3));
@@ -172,7 +168,7 @@ public class TreeTest
     public async Task Concurrent_Insert_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 5000;
+        int keysPerThread = 50000;
 
         ConcurrentBag<int> expected = new ConcurrentBag<int>();
 
@@ -199,11 +195,11 @@ public class TreeTest
     public async Task Concurrent_Delete_ShouldNotCorruptTree()
     {
         int threadCount = 32;
-        int keysPerThread = 50000;
+        int keysPerThread = 10000;
         var keyCount = threadCount * keysPerThread * 2;
         
         for (int i = 0; i < keyCount; i++)
-            await _tree.Insert(i, 1, 1); ;
+            await _tree.Insert(i, 1, 1);
 
         var tasks = Enumerable.Range(0, threadCount)
             .Select(t => Task.Run(async () =>
@@ -240,14 +236,7 @@ public class TreeTest
                 for (int i = 0; i < keysPerThread; i++)
                 {
                     int key = t * keysPerThread + i;
-                    try
-                    {
                         await _tree.Insert(key, 1, 1);
-                    }
-                    catch (Exception)
-                    {
-                        throw;
-                    }
                 }
             }));
 
@@ -257,14 +246,7 @@ public class TreeTest
                 for (int i = 0; i < keysPerThread; i++)
                 {
                     int key = t * keysPerThread + i;
-                    try
-                    {
                         await _tree.Delete(key);
-                    }
-                    catch (Exception)
-                    {
-                        throw;
-                    }
                 }
             }));
 

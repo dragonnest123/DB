@@ -1,3 +1,4 @@
+using AzotBase.Index;
 using AzotBase.Page;
 
 namespace Test.PageTest;
