@@ -2,7 +2,7 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzotBase", "AzotBase\AzotBase.csproj", "{6482D680-AFC6-4D86-B94A-D644F1EDDE33}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Test", "Test\Test.csproj", "{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "AzotBase.Tests", "AzotBase.Tests\AzotBase.Tests.csproj", "{0D52BD19-B12E-49D8-B622-1EE7E066FEF3}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
