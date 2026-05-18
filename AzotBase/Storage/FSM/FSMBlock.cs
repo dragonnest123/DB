@@ -4,8 +4,8 @@ namespace AzotBase.Storage.FSM;
 
 public class FSMBlock
 {
-    public const ushort BlockSize = 1 + ChildCount + ChildCount * ChildCount;
-    public const int MaxPagesCount = ChildCount * ChildCount;
+    public const ushort BlockSizeBytes = 1 + ChildCount + ChildCount * ChildCount;
+    public const int MaxPagesPerBlock = ChildCount * ChildCount;
     
     private const int ChildCount = 64; //PageCount
     private const int LeavesOffset = ChildCount + 1;
@@ -64,6 +64,8 @@ public class FSMBlock
             _pageSizeCategories[index] = max;
         }
     }
+    
+    public byte[] ToByteArray() => _pageSizeCategories;
 
     private byte GetCategory(int freeSpace)
         => (byte)(freeSpace * byte.MaxValue / SystemPage.PageSize);
