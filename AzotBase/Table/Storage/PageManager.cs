@@ -109,18 +109,16 @@ public class PageManager
         return Interlocked.Increment(ref _nextPageId) - 1;
     }
 
-    private static async Task LockPage(PageBase page, PageLockMode lockMode)
+    private static ValueTask LockPage(PageBase page, PageLockMode lockMode)
     {
         switch (lockMode)
         {
             case PageLockMode.ReadLock:
-                await page.EnterReadLock(1000);
-                break;
+                return page.EnterReadLock(1000);
             case PageLockMode.WriteLock:
-                await page.EnterWriteLock(1000);
-                break;
+                return page.EnterWriteLock(1000);
             case PageLockMode.NoLock:
-                break;
+                return ValueTask.CompletedTask;
             default: throw new ArgumentOutOfRangeException(nameof(lockMode));
         }
     }

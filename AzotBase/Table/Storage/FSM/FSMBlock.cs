@@ -67,6 +67,6 @@ public class FSMBlock
     
     public byte[] ToByteArray() => _pageSizeCategories;
 
-    private byte GetCategory(int freeSpace)
+    private static byte GetCategory(int freeSpace)
         => (byte)(freeSpace * byte.MaxValue / SystemPage.PageSize);
 }
